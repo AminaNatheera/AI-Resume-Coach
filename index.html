@@ -1,1190 +1,551 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Briefcase, FileText, User, MessageSquare, Sun, Moon, 
-  Upload, Plus, Trash2, ChevronLeft, Download, CheckCircle, 
-  Loader2, Send, Sparkles, ChevronDown, ChevronRight, Play,
-  FolderOpen, Printer, Edit3, Sparkle, AlertCircle
-} from 'lucide-react';
-
-// --- MOCK DATA & GENERATORS ---
-const MOCK_IMPORTED_PROFILE = {
-  fullName: "Alex Rivera",
-  email: "alex.rivera@example.com",
-  phone: "(555) 123-4567",
-  linkedin: "linkedin.com/in/arivera",
-  portfolio: "alexrivera.dev",
-  summary: "Results-driven Software Engineer with over 5 years of experience delivering cloud-scale front-end systems. Proven track record of optimizing application performance and spearheading architectural migrations.",
-  experience: [
-    { 
-      id: "exp-1", 
-      company: "Stellar Cloud Systems", 
-      title: "Senior Front-End Engineer", 
-      startDate: "2023-01", 
-      endDate: "Present", 
-      description: "Led migration of a core enterprise dashboard to React and Tailwind, reducing bundle sizes by 35%. Mentored 4 junior developers and established code quality standards. Built reusable component library saving teams 20+ development hours weekly." 
-    },
-    { 
-      id: "exp-2", 
-      company: "Quantum Tech Lab", 
-      title: "Software Engineer", 
-      startDate: "2020-05", 
-      endDate: "2022-12", 
-      description: "Designed and optimized critical data-visualization microservices using TypeScript. Decreased memory usage by 22% through garbage collection profiling. Coordinated with backend teams to integrate GraphQL API endpoints." 
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NotebookLM - Career Alignment Workspace</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+            mono: ['JetBrains Mono', 'Fira Code', 'Courier New', 'monospace'],
+          }
+        }
+      }
     }
-  ],
-  education: [
-    { id: "edu-1", school: "Pacific University of Science", degree: "B.S. in Computer Science", year: "2020" }
-  ],
-  skills: "React, TypeScript, Next.js, JavaScript, Tailwind CSS, REST APIs, GraphQL, Performance Optimization, Node.js, Git, CI/CD"
-};
-
-const EMPTY_PROFILE = {
-  fullName: "", email: "", phone: "", linkedin: "", portfolio: "", summary: "", experience: [], education: [], skills: ""
-};
-
-// Guardrail against common AI buzzwords: replaces words with simple, human-sounding counterparts
-const sanitizeAndVerifyText = (text) => {
-  const buzzwordReplacements = {
-    "delve": "examine",
-    "synergy": "collaboration",
-    "leveraging": "using",
-    "overarching": "comprehensive",
-    "testament": "proof",
-    "dynamic": "capable",
-    "innovative": "effective",
-    "passionate": "focused",
-    "impactful": "significant",
-    "revolutionize": "improve",
-    "spearhead": "lead",
-    "transformative": "productive"
-  };
-
-  let cleaned = text;
-  Object.keys(buzzwordReplacements).forEach(buzzword => {
-    const regex = new RegExp(`\\b${buzzword}\\b`, 'gi');
-    cleaned = cleaned.replace(regex, buzzwordReplacements[buzzword]);
-  });
-  return cleaned;
-};
-
-// Generates an ATS-optimized, high-fidelity plain text resume structure based on Tab 3 + Job Details
-const generateMockResume = (profile, jobInfo) => {
-  const { title, company } = jobInfo;
-  const fullName = profile.fullName || "YOUR NAME";
-  const contactInfo = [profile.email, profile.phone, profile.linkedin, profile.portfolio].filter(Boolean).join("  |  ");
-  
-  const rawSummary = profile.summary 
-    ? `Applying as ${title} at ${company}. ${profile.summary}`
-    : `Applying as ${title} at ${company}. Dedicated professional focusing on high-impact software execution, architectural scale, and clean programmatic solutions.`;
-  const professionalSummary = sanitizeAndVerifyText(rawSummary);
-
-  const experienceSection = profile.experience.length > 0 
-    ? profile.experience.map(exp => {
-        const descLines = exp.description.split('\n').map(line => {
-          const cleanedLine = sanitizeAndVerifyText(line.trim().replace(/^-\s*/, ''));
-          return cleanedLine ? `* ${cleanedLine}` : '';
-        }).filter(Boolean).join('\n');
-
-        return `${exp.title.toUpperCase()} \n${exp.company}  [${exp.startDate} to ${exp.endDate}]\n${descLines}`;
-      }).join('\n\n')
-    : "* Senior Front-End Developer\n  Target Corp (Mock Date)\n  * Built responsive components driving user engagement by 25%.\n  * Decreased memory overhead by applying clean garbage collection procedures.\n  * Mentored engineering personnel to adopt modern React techniques.";
-
-  const educationSection = profile.education.length > 0
-    ? profile.education.map(edu => `${edu.degree}\n${edu.school} — Class of ${edu.year}`).join('\n\n')
-    : "B.S. in Computer Science\nState University (2020)";
-
-  const skillsList = profile.skills || "React, TypeScript, CSS, Node.js, Frontend Architecture";
-
-  return `
-${fullName.toUpperCase()}
-${contactInfo}
-
-========================================================================
-PROFESSIONAL SUMMARY
-========================================================================
-${professionalSummary}
-
-========================================================================
-PROFESSIONAL EXPERIENCE
-========================================================================
-${experienceSection}
-
-========================================================================
-EDUCATION
-========================================================================
-${educationSection}
-
-========================================================================
-CORE COMPETENCIES & SKILLS
-========================================================================
-${skillsList}
-`.trim();
-};
-
-const generateMockKeywords = (jd) => {
-  const keyTerms = [
-    'react', 'typescript', 'next.js', 'performance', 'accessibility', 
-    'leadership', 'optimization', 'architecture', 'rest api', 'graphql',
-    'collaboration', 'databases', 'system design', 'agile', 'scrum'
-  ];
-  const found = keyTerms.filter(term => jd.toLowerCase().includes(term));
-  return found.length > 0 ? found : ['frontend development', 'problem solving', 'scalability'];
-};
-
-const delay = (ms) => new Promise(res => setTimeout(res, ms));
-
-// --- MAIN APP COMPONENT ---
-export default function App() {
-  const [theme, setTheme] = useState('light');
-  const [activeTab, setActiveTab] = useState('workspace'); // 'workspace' | 'archive' | 'profile'
-  const [isChatOpen, setIsChatOpen] = useState(true);
-
-  // States
-  const [userProfile, setUserProfile] = useState(EMPTY_PROFILE);
-  const [jobsHistory, setJobsHistory] = useState([]);
-  
-  // Workspace States
-  const [wsCompany, setWsCompany] = useState('');
-  const [wsTitle, setWsTitle] = useState('');
-  const [wsJd, setWsJd] = useState('');
-  const [wsIsGenerating, setWsIsGenerating] = useState(false);
-  const [wsResultJobId, setWsResultJobId] = useState(null);
-
-  // Archive States
-  const [selectedArchiveJobId, setSelectedArchiveJobId] = useState(null);
-
-  // Load persistence
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('theme') || 'light';
-    const savedProfile = localStorage.getItem('userProfile');
-    const savedJobs = localStorage.getItem('jobsHistory');
-
-    setTheme(savedTheme);
-    if (savedTheme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
+  </script>
+  <!-- Google Fonts for typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    /* Custom thin scrollbars for minimalist layout */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
     }
-    
-    if (savedProfile) {
-      setUserProfile(JSON.parse(savedProfile));
-    } else {
-      // Default initial profile load to prevent empty UX
-      setUserProfile(MOCK_IMPORTED_PROFILE);
+    ::-webkit-scrollbar-track {
+      background: transparent;
     }
-
-    if (savedJobs) {
-      setJobsHistory(JSON.parse(savedJobs));
+    .dark ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 9999px;
     }
-  }, []);
-
-  // Save persistence when state updates
-  useEffect(() => {
-    localStorage.setItem('theme', theme);
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 9999px;
     }
-  }, [theme]);
+    /* Simple print utility styles */
+    @media print {
+      body * {
+        visibility: hidden;
+      }
+      #print-area, #print-area * {
+        visibility: visible;
+      }
+      #print-area {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        white-space: pre-wrap !important;
+      }
+    }
+  </style>
+</head>
+<body class="h-full overflow-hidden transition-colors duration-200 bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-100">
 
-  useEffect(() => {
-    localStorage.setItem('userProfile', JSON.stringify(userProfile));
-  }, [userProfile]);
+  <!-- APP MAIN WRAPPER -->
+  <div class="flex h-full w-full overflow-hidden">
 
-  useEffect(() => {
-    localStorage.setItem('jobsHistory', JSON.stringify(jobsHistory));
-  }, [jobsHistory]);
+    <!-- PERSISTENT LEFT SIDEBAR -->
+    <nav class="w-20 flex flex-col items-center py-6 border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/90 z-30 transition-colors duration-200">
+      <!-- NotebookLM style Logo badge -->
+      <div class="mb-10 flex flex-col items-center">
+        <div class="p-3 rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 flex items-center justify-center">
+          <i data-lucide="sparkles" class="w-5.5 h-5.5 animate-pulse"></i>
+        </div>
+        <span class="text-[10px] font-bold tracking-wider uppercase mt-2 text-indigo-600 dark:text-indigo-400">LM</span>
+      </div>
+      
+      <!-- Nav Tabs -->
+      <div class="flex-1 flex flex-col gap-5 w-full items-center">
+        <!-- Tab 1: Workspace -->
+        <div class="relative group flex justify-center w-full px-2">
+          <button id="tab-workspace-btn" onclick="switchTab('workspace')" class="p-3.5 rounded-2xl transition-all duration-200 flex items-center justify-center w-12 h-12 bg-white text-indigo-600 shadow-md border border-slate-100 dark:bg-slate-800 dark:text-indigo-400 dark:border-slate-700/50">
+            <i data-lucide="play" class="w-5 h-5"></i>
+          </button>
+          <span class="absolute left-22 py-1.5 px-3 bg-slate-800 text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 whitespace-nowrap z-50 shadow-md">Workspace</span>
+        </div>
 
-  const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
+        <!-- Tab 2: Archive -->
+        <div class="relative group flex justify-center w-full px-2">
+          <button id="tab-archive-btn" onclick="switchTab('archive')" class="p-3.5 rounded-2xl transition-all duration-200 flex items-center justify-center w-12 h-12 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/40">
+            <i data-lucide="briefcase" class="w-5 h-5"></i>
+          </button>
+          <span class="absolute left-22 py-1.5 px-3 bg-slate-800 text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 whitespace-nowrap z-50 shadow-md">Archive</span>
+        </div>
 
-  const handleGenerateResume = async () => {
-    if (!wsTitle.trim() || !wsCompany.trim() || !wsJd.trim()) return;
-    
-    setWsIsGenerating(true);
-    await delay(1800); // Realistic simulated processing latency
+        <!-- Tab 3: Master Data / Source -->
+        <div class="relative group flex justify-center w-full px-2">
+          <button id="tab-profile-btn" onclick="switchTab('profile')" class="p-3.5 rounded-2xl transition-all duration-200 flex items-center justify-center w-12 h-12 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/40">
+            <i data-lucide="user" class="w-5 h-5"></i>
+          </button>
+          <span class="absolute left-22 py-1.5 px-3 bg-slate-800 text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 whitespace-nowrap z-50 shadow-md">Master Data</span>
+        </div>
+      </div>
 
-    const tailoredResume = generateMockResume(userProfile, { title: wsTitle, company: wsCompany });
-    const keywords = generateMockKeywords(wsJd);
-    const score = Math.floor(Math.random() * 21) + 79; // Balanced ATS matching score (79-99)
+      <!-- Theme & Chat Controls -->
+      <div class="flex flex-col gap-4 items-center">
+        <!-- Toggle AI Assistant -->
+        <button id="chat-toggle-btn" onclick="toggleChatPanel()" class="p-3 rounded-xl transition-all relative bg-indigo-50 text-indigo-600 dark:bg-indigo-950/70 dark:text-indigo-400" title="Toggle AI Assistant Panel">
+          <i data-lucide="message-square" class="w-5 h-5"></i>
+          <span id="chat-badge" class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-emerald-500 hidden animate-ping"></span>
+        </button>
+        <!-- Toggle Dark/Light Mode -->
+        <button onclick="toggleTheme()" class="p-3 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800" title="Toggle Theme">
+          <i id="theme-icon" data-lucide="sun" class="w-5 h-5"></i>
+        </button>
+      </div>
+    </nav>
 
-    const newJob = {
-      id: "job-" + Date.now(),
-      dateAdded: new Date().toISOString().split('T')[0],
-      company: wsCompany,
-      title: wsTitle,
-      jd: wsJd,
-      resume: tailoredResume,
-      keywords: keywords,
-      matchScore: score,
-      status: 'Draft',
-      notes: ''
+    <!-- CENTRAL DYNAMIC WORKSPACE CONTENT -->
+    <main class="flex-1 overflow-hidden relative flex flex-col">
+      <!-- Minimalist Gradient overlay behind dynamic view -->
+      <div id="glow-backdrop" class="h-40 absolute top-0 left-0 right-0 -z-10 bg-gradient-to-b from-indigo-50 to-slate-50 dark:from-indigo-950/20 dark:to-slate-950 opacity-40"></div>
+      
+      <div class="flex-1 overflow-y-auto p-8 pt-10">
+        <div class="max-w-5xl mx-auto h-full">
+
+          <!-- TAB 1: WORKSPACE INTERFACE -->
+          <div id="tab-workspace" class="space-y-6 max-w-3xl mx-auto py-4">
+            <div class="mb-8 text-center">
+              <h1 class="text-4xl font-semibold tracking-tight mb-2">Workspace</h1>
+              <p class="text-slate-500 dark:text-slate-400">Assemble realistic, tailored resumes structured precisely for enterprise ATS compliance.</p>
+            </div>
+
+            <!-- Workspace Setup Card -->
+            <div id="workspace-form-view" class="p-8 rounded-3xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/60 shadow-sm transition-all duration-300">
+              <div class="grid grid-cols-2 gap-4 mb-6">
+                <div>
+                  <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">Company Name</label>
+                  <input type="text" id="ws-company-input" class="w-full p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-transparent text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all placeholder-slate-400" placeholder="Acme Systems">
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">Job Title</label>
+                  <input type="text" id="ws-title-input" class="w-full p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-transparent text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all placeholder-slate-400" placeholder="Senior Front-End Engineer">
+                </div>
+              </div>
+
+              <!-- Job description area / File drop zone component -->
+              <div class="mb-6">
+                <div class="flex justify-between items-end mb-2">
+                  <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Job Description Requirements</label>
+                  <button onclick="simulateMockFileDrop()" class="text-xs flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 hover:underline font-medium">
+                    <i data-lucide="upload" class="w-3.5 h-3.5"></i> Mock Document Parse
+                  </button>
+                </div>
+                
+                <div id="dropzone" class="relative group rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-500 transition-all p-4 bg-transparent">
+                  <textarea id="ws-jd-input" class="w-full h-44 border-none bg-transparent resize-none outline-none text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:ring-0" placeholder="Paste requirements here, or drag and drop your JD document..."></textarea>
+                  <div id="dropzone-hint" class="absolute inset-0 pointer-events-none flex flex-col justify-center items-center bg-white/95 dark:bg-slate-900/95 rounded-2xl opacity-0 transition-opacity flex gap-2">
+                    <i data-lucide="upload-cloud" class="w-8 h-8 text-indigo-500 animate-bounce"></i>
+                    <p class="text-sm font-semibold">Drop your file here to parse requirements</p>
+                  </div>
+                </div>
+              </div>
+
+              <button id="generate-btn" onclick="generateTailoredResume()" class="w-full py-4 rounded-xl font-semibold bg-indigo-600 hover:bg-indigo-700 text-white hover:shadow-lg hover:shadow-indigo-600/10 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2">
+                <i data-lucide="sparkles" class="w-4.5 h-4.5"></i> Analyze & Align Resume
+              </button>
+            </div>
+
+            <!-- Workspace Generating Loader Overlay -->
+            <div id="workspace-loading-view" class="hidden p-16 text-center border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/60 rounded-3xl space-y-4 shadow-sm animate-pulse">
+              <div class="flex justify-center">
+                <i data-lucide="loader-2" class="w-10 h-10 text-indigo-600 dark:text-indigo-400 animate-spin"></i>
+              </div>
+              <p class="text-base font-medium">Analyzing master profile context...</p>
+              <p class="text-xs text-slate-400">Verifying experience targets, removing buzzwords, and creating clean plain text resume formats...</p>
+            </div>
+
+            <!-- Split Screen Results (Generated Document Preview) -->
+            <div id="workspace-result-view" class="hidden h-[80vh] flex flex-col animate-in fade-in slide-in-from-bottom-6 duration-500">
+              <div class="flex justify-between items-center mb-6 pb-4 border-b border-slate-200/50 dark:border-slate-800/50">
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold px-2 py-1 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 rounded-md">ATS OPTIMIZED</span>
+                    <p class="text-sm text-slate-400" id="res-date">Created Today</p>
+                  </div>
+                  <h1 class="text-2xl font-semibold tracking-tight mt-1" id="res-title-header">Role — Company</h1>
+                </div>
+                <div class="flex gap-3">
+                  <button onclick="resetWorkspace()" class="px-4 py-2.5 rounded-xl text-sm font-medium border border-slate-200 dark:border-slate-800 bg-white hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 transition-colors">
+                    Start New Analysis
+                  </button>
+                  <button onclick="exportToPrint()" class="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold transition-all shadow-md shadow-indigo-600/10">
+                    <i data-lucide="printer" class="w-4 h-4"></i> Export / Print View
+                  </button>
+                </div>
+              </div>
+
+              <!-- Content Columns -->
+              <div class="flex-1 flex gap-6 min-h-0">
+                <!-- Left analysis side -->
+                <div class="w-80 flex flex-col gap-4 overflow-y-auto pr-1">
+                  <!-- Match score card -->
+                  <div class="p-5 rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/40 shadow-sm">
+                    <h3 class="font-semibold text-lg flex items-center gap-2 mb-2 text-emerald-500">
+                      <i data-lucide="check-circle" class="w-5 h-5"></i> Match Score: <span id="res-score">85%</span>
+                    </h3>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                      Our alignment workspace compared your primary master database elements with the specifications of this job opening.
+                    </p>
+                  </div>
+
+                  <!-- Keyword match card -->
+                  <div class="p-5 rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/40 shadow-sm">
+                    <h4 class="text-xs font-bold mb-3 uppercase tracking-wider text-slate-400 dark:text-slate-500">Matched JD Keywords</h4>
+                    <div id="res-keywords" class="flex flex-wrap gap-2">
+                      <!-- Dynamic keywords -->
+                    </div>
+                  </div>
+
+                  <!-- Original job desc details collapsible container -->
+                  <div class="flex-1 p-5 rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/40 shadow-sm flex flex-col">
+                    <h4 class="text-xs font-bold mb-3 uppercase tracking-wider text-slate-400 dark:text-slate-500">Reference Job Description</h4>
+                    <div id="res-original-jd" class="text-xs text-slate-500 dark:text-slate-400 overflow-y-auto whitespace-pre-wrap leading-relaxed pr-1 flex-1"></div>
+                  </div>
+                </div>
+
+                <!-- Right dynamic document rich-edit area -->
+                <div class="flex-1 rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/80 shadow-md flex flex-col overflow-hidden">
+                  <div class="p-3.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 flex justify-between items-center">
+                    <div class="flex items-center gap-2">
+                      <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                      <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Plain Text Layout</span>
+                    </div>
+                    <span class="text-[10px] bg-slate-200/60 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 py-0.5 px-2 rounded font-mono">Auto-sync Active</span>
+                  </div>
+                  <textarea id="res-resume-textarea" oninput="saveActiveResumeEdit(this.value)" class="flex-1 w-full p-8 resize-none outline-none font-mono text-sm leading-relaxed bg-transparent text-slate-700 dark:text-slate-300" spellcheck="false"></textarea>
+                </div>
+              </div>
+            </div>
+          </div>
+
+
+          <!-- TAB 2: ARCHIVE / JOB TRACKER -->
+          <div id="tab-archive" class="space-y-6 py-4 hidden">
+            <!-- Table list overview of jobs history -->
+            <div id="archive-list-container">
+              <div class="mb-8">
+                <h1 class="text-3xl font-semibold tracking-tight">Career Archive</h1>
+                <p class="text-slate-500 dark:text-slate-400 mt-2">Manage ongoing and historical interview opportunities and target specifications.</p>
+              </div>
+
+              <div id="archive-empty" class="hidden p-16 text-center rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/10">
+                <i data-lucide="briefcase" class="w-10 h-10 mx-auto mb-4 text-slate-400"></i>
+                <h3 class="text-lg font-medium">No archived records yet</h3>
+                <p class="text-sm text-slate-500 mt-1">Navigate to the workspace, align your first job description, and your records will save automatically.</p>
+              </div>
+
+              <div id="archive-list" class="grid gap-3">
+                <!-- Dynamic Job Row cards -->
+              </div>
+            </div>
+
+            <!-- Detailed Notebook/Scratchpad view for chosen application -->
+            <div id="archive-details-container" class="hidden h-[85vh] flex flex-col animate-in fade-in duration-300">
+              <div class="flex items-center gap-4 mb-6 pb-4 border-b border-slate-200 dark:border-slate-800">
+                <button onclick="closeArchiveDetails()" class="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800 transition-colors">
+                  <i data-lucide="chevron-left" class="w-5 h-5"></i>
+                </button>
+                <div>
+                  <h1 id="det-title" class="text-2xl font-semibold tracking-tight">Job Title</h1>
+                  <p id="det-company" class="text-sm text-slate-500 mt-1">Company Info</p>
+                </div>
+                <div class="ml-auto flex items-center gap-3">
+                  <span class="text-xs text-slate-400">Application State:</span>
+                  <select id="det-status-select" onchange="updateArchiveJobStatus(this.value)" class="p-2 rounded-xl text-sm border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 outline-none font-medium">
+                    <option value="Draft">Draft</option>
+                    <option value="Applied">Applied</option>
+                    <option value="Interviewing">Interviewing</option>
+                    <option value="Rejected">Rejected</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="flex-1 flex gap-6 min-h-0">
+                <!-- Left details document box -->
+                <div class="w-1/2 rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/80 flex flex-col overflow-hidden shadow-sm">
+                  <div class="p-3.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 flex justify-between items-center">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Saved Document Version</span>
+                  </div>
+                  <textarea id="det-resume-textarea" oninput="saveArchiveResumeEdit(this.value)" class="flex-1 w-full p-6 resize-none outline-none font-mono text-sm leading-relaxed bg-transparent text-slate-700 dark:text-slate-300"></textarea>
+                </div>
+
+                <!-- Right details workspace elements -->
+                <div class="w-1/2 flex flex-col gap-5 overflow-y-auto">
+                  <div class="p-5 rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/50">
+                    <h4 class="text-xs font-bold mb-3 uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-2">
+                      <i data-lucide="file-text" class="w-3.5 h-3.5"></i> Extracted Job Requirements
+                    </h4>
+                    <div id="det-jd" class="text-xs text-slate-500 dark:text-slate-400 whitespace-pre-wrap max-h-48 overflow-y-auto leading-relaxed pr-1"></div>
+                  </div>
+
+                  <div class="flex-1 p-5 rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/50 flex flex-col">
+                    <h4 class="text-xs font-bold mb-3 uppercase tracking-wider text-indigo-500 flex items-center gap-2">
+                      <i data-lucide="edit-3" class="w-3.5 h-3.5"></i> Interview Notes & Draft Cover Letter (Autosaves)
+                    </h4>
+                    <textarea id="det-notes" oninput="saveArchiveNotesEdit(this.value)" placeholder="Draft customized outreach communications, interview questions, or strategic notes here..." class="flex-1 w-full resize-none outline-none text-sm leading-relaxed bg-transparent text-slate-700 dark:text-slate-300"></textarea>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+
+          <!-- TAB 3: USER MASTER DATA PROFILE -->
+          <div id="tab-profile" class="space-y-6 py-4 hidden">
+            <div class="flex justify-between items-center mb-8 pb-4 border-b border-slate-200 dark:border-slate-800">
+              <div>
+                <h1 class="text-3xl font-semibold tracking-tight">Master Profile Source</h1>
+                <p class="text-slate-500 dark:text-slate-400 mt-1 text-sm">Your primary career database elements used for contextualizing aligned resumes.</p>
+              </div>
+              <button onclick="importMockProfile()" class="flex items-center gap-2 px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:hover:bg-indigo-950/60 dark:text-indigo-300 rounded-xl text-xs font-semibold border border-indigo-100 dark:border-indigo-900/30 transition-all">
+                <i data-lucide="upload" class="w-3.5 h-3.5"></i> Import Demo Profile
+              </button>
+            </div>
+
+            <div class="space-y-6">
+              <!-- Contact Card -->
+              <section class="p-6 rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/40 shadow-sm">
+                <h2 class="text-sm font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-4 flex items-center gap-2">
+                  <i data-lucide="user" class="w-4 h-4"></i> Personal Details
+                </h2>
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1.5">Full Name</label>
+                    <input type="text" id="prof-name" oninput="updateProfileField('fullName', this.value)" class="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-transparent text-sm text-slate-800 dark:text-slate-200 outline-none" placeholder="Alex Rivera">
+                  </div>
+                  <div>
+                    <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1.5">Email Address</label>
+                    <input type="email" id="prof-email" oninput="updateProfileField('email', this.value)" class="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-transparent text-sm text-slate-800 dark:text-slate-200 outline-none" placeholder="alex@example.com">
+                  </div>
+                  <div>
+                    <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1.5">Phone Number</label>
+                    <input type="text" id="prof-phone" oninput="updateProfileField('phone', this.value)" class="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-transparent text-sm text-slate-800 dark:text-slate-200 outline-none" placeholder="(555) 123-4567">
+                  </div>
+                  <div>
+                    <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1.5">LinkedIn URL</label>
+                    <input type="text" id="prof-linkedin" oninput="updateProfileField('linkedin', this.value)" class="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-transparent text-sm text-slate-800 dark:text-slate-200 outline-none" placeholder="linkedin.com/in/username">
+                  </div>
+                  <div class="col-span-2">
+                    <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1.5">Portfolio Link</label>
+                    <input type="text" id="prof-portfolio" oninput="updateProfileField('portfolio', this.value)" class="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-transparent text-sm text-slate-800 dark:text-slate-200 outline-none" placeholder="alexrivera.dev">
+                  </div>
+                </div>
+              </section>
+
+              <!-- Career Summary Card -->
+              <section class="p-6 rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/40 shadow-sm">
+                <h2 class="text-sm font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-4">Master Career Summary</h2>
+                <textarea id="prof-summary" oninput="updateProfileField('summary', this.value)" class="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-transparent text-sm text-slate-800 dark:text-slate-200 h-28 resize-none outline-none" placeholder="Describe your overall experience, main industry pillars, and engineering philosophies..."></textarea>
+              </section>
+
+              <!-- Experience dynamic entries list -->
+              <section class="p-6 rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/40 shadow-sm">
+                <div class="flex justify-between items-center mb-4">
+                  <h2 class="text-sm font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Professional Experience Log</h2>
+                  <button onclick="addNewExperienceNode()" class="text-xs flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-semibold">
+                    <i data-lucide="plus" class="w-3.5 h-3.5"></i> Add Experience
+                  </button>
+                </div>
+                <div id="prof-experience-list" class="space-y-4">
+                  <!-- Dynamic Experience Entries -->
+                </div>
+              </section>
+
+              <!-- Education section lists -->
+              <section class="p-6 rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/40 shadow-sm">
+                <div class="flex justify-between items-center mb-4">
+                  <h2 class="text-sm font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Academic Background</h2>
+                  <button onclick="addNewEducationNode()" class="text-xs flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-semibold">
+                    <i data-lucide="plus" class="w-3.5 h-3.5"></i> Add Education
+                  </button>
+                </div>
+                <div id="prof-education-list" class="space-y-4">
+                  <!-- Dynamic Education Entries -->
+                </div>
+              </section>
+
+              <!-- Skills textarea section -->
+              <section class="p-6 rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/40 shadow-sm">
+                <h2 class="text-sm font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-4">Core Skills Tag Deck</h2>
+                <textarea id="prof-skills" oninput="updateProfileField('skills', this.value)" class="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-transparent text-sm text-slate-800 dark:text-slate-200 h-20 resize-none outline-none" placeholder="React, TypeScript, Next.js, GraphQL, Performance Optimization, Node.js, CI/CD"></textarea>
+              </section>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </main>
+
+    <!-- COLLAPSIBLE RIGHT AI CHAT PANEL -->
+    <div id="chat-panel" class="transition-all duration-300 ease-in-out border-l border-slate-200 bg-white/95 dark:border-slate-800 dark:bg-slate-900/95 backdrop-blur-xl w-96 flex flex-col h-full z-20">
+      
+      <!-- Chat Header -->
+      <div class="p-4 border-b border-slate-200 dark:border-slate-800 flex flex-col justify-center">
+        <div class="flex items-center gap-2 mb-1.5">
+          <div class="w-2 h-2 rounded-full bg-indigo-500 animate-ping"></div>
+          <span class="font-bold text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">Career Coach System</span>
+        </div>
+        <p id="chat-context-sub" class="text-xs text-slate-400 truncate">General workspace advice</p>
+      </div>
+
+      <!-- Messages Stream Frame -->
+      <div id="chat-message-frame" class="flex-1 overflow-y-auto p-4 space-y-4">
+        <!-- Default Coach Greeting -->
+        <div class="flex flex-col items-start">
+          <div class="max-w-[85%] p-3.5 rounded-2xl rounded-tl-sm text-sm border border-slate-200 bg-white text-slate-700 dark:bg-slate-800 dark:border-slate-700/50 dark:text-slate-200 shadow-sm">
+            Hello! I am your AI Career Coach. Tell me about your upcoming applications, or click any prompt chip below.
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Interactive Prompt Chips -->
+      <div class="p-3 border-t border-slate-100 dark:border-slate-800 flex flex-col gap-2 bg-slate-950/5">
+        <span class="text-[9px] uppercase font-bold text-slate-400 tracking-wider px-1">Suggested Prompts</span>
+        <div id="chat-chips-container" class="flex flex-wrap gap-1.5">
+          <!-- Dynamic Chips elements -->
+        </div>
+      </div>
+
+      <!-- Chat text interface inputs -->
+      <div class="p-3 border-t border-slate-200 dark:border-slate-800 flex gap-2">
+        <input type="text" id="chat-text-input" onkeydown="handleChatEnter(event)" class="flex-1 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-transparent text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-1 focus:ring-indigo-500" placeholder="Ask your Coach a question...">
+        <button onclick="sendChatMessage()" class="p-2.5 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 flex items-center justify-center transition-all">
+          <i data-lucide="send" class="w-4.5 h-4.5"></i>
+        </button>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- PRINT UTILITY CONTAINER -->
+  <div id="print-area" class="hidden font-mono text-sm leading-relaxed p-10 bg-white text-slate-900"></div>
+
+  <!-- CORE CONTROLLER MODULE -->
+  <script>
+    // Mock Core Data structures
+    const MOCK_IMPORTED_PROFILE = {
+      fullName: "Alex Rivera",
+      email: "alex.rivera@example.com",
+      phone: "(555) 123-4567",
+      linkedin: "linkedin.com/in/arivera",
+      portfolio: "alexrivera.dev",
+      summary: "Results-driven Software Engineer with over 5 years of experience delivering cloud-scale front-end systems. Proven track record of optimizing application performance and spearheading architectural migrations.",
+      experience: [
+        { 
+          id: "exp-1", 
+          company: "Stellar Cloud Systems", 
+          title: "Senior Front-End Engineer", 
+          startDate: "2023-01", 
+          endDate: "Present", 
+          description: "Led migration of a core enterprise dashboard to React and Tailwind, reducing bundle sizes by 35%.\nMentored 4 junior developers and established code quality standards.\nBuilt reusable component library saving teams 20+ development hours weekly." 
+        },
+        { 
+          id: "exp-2", 
+          company: "Quantum Tech Lab", 
+          title: "Software Engineer", 
+          startDate: "2020-05", 
+          endDate: "2022-12", 
+          description: "Designed and optimized critical data-visualization microservices using TypeScript.\nDecreased memory usage by 22% through garbage collection profiling.\nCoordinated with backend teams to integrate GraphQL API endpoints." 
+        }
+      ],
+      education: [
+        { id: "edu-1", school: "Pacific University of Science", degree: "B.S. in Computer Science", year: "2020" }
+      ],
+      skills: "React, TypeScript, Next.js, JavaScript, Tailwind CSS, REST APIs, GraphQL, Performance Optimization, Node.js, Git, CI/CD"
     };
 
-    setJobsHistory(prev => [newJob, ...prev]);
-    setWsResultJobId(newJob.id);
-    setWsIsGenerating(false);
-  };
+    const EMPTY_PROFILE = {
+      fullName: "", email: "", phone: "", linkedin: "", portfolio: "", summary: "", experience: [], education: [], skills: ""
+    };
 
-  const updateJobInHistory = (id, updates) => {
-    setJobsHistory(prev => prev.map(job => job.id === id ? { ...job, ...updates } : job));
-  };
+    // System States
+    let state = {
+      theme: 'light',
+      activeTab: 'workspace', // 'workspace' | 'archive' | 'profile'
+      isChatOpen: true,
+      userProfile: JSON.parse(JSON.stringify(EMPTY_PROFILE)),
+      jobsHistory: [],
+      activeWorkspaceJobId: null,
+      selectedArchiveJobId: null,
+      chatHistory: [
+        { role: 'assistant', content: "Hello! I am your AI Career Coach. Tell me about your upcoming applications, or click any prompt chip below." }
+      ]
+    };
 
-  // Get current job workspace reference to provide contextual memory to Chat Coach
-  const getContextualJob = () => {
-    if (activeTab === 'workspace' && wsResultJobId) {
-      return jobsHistory.find(j => j.id === wsResultJobId);
-    }
-    if (activeTab === 'archive' && selectedArchiveJobId) {
-      return jobsHistory.find(j => j.id === selectedArchiveJobId);
-    }
-    return null;
-  };
+    // Buzzword verification filter lists
+    const buzzwordReplacements = {
+      "delve": "examine",
+      "synergy": "collaboration",
+      "leveraging": "using",
+      "overarching": "comprehensive",
+      "testament": "proof",
+      "dynamic": "capable",
+      "innovative": "effective",
+      "passionate": "focused",
+      "impactful": "significant",
+      "revolutionize": "improve",
+      "spearhead": "lead",
+      "transformative": "productive"
+    };
 
-  const currentJobContext = getContextualJob();
+    // Initialize application processes
+    window.addEventListener('DOMContentLoaded', () => {
+      // Restore cached state
+      if (localStorage.getItem('state')) {
+        try {
+          const cached = JSON.parse(localStorage.getItem('state'));
+          state.theme = cached.theme || 'light';
+          state.userProfile = cached.userProfile || JSON.parse(JSON.stringify(MOCK_IMPORTED_PROFILE));
+          state.jobsHistory = cached.jobsHistory || [];
+          state.activeTab = cached.activeTab || 'workspace';
+          state.isChatOpen = cached.isChatOpen !== undefined ? cached.isChatOpen : true;
+        } catch (e) {
+          state.userProfile = JSON.parse(JSON.stringify(MOCK_IMPORTED_PROFILE));
+        }
+      } else {
+        // Default onboarding load
+        state.userProfile = JSON.parse(JSON.stringify(MOCK_IMPORTED_PROFILE));
+      }
 
-  return (
-    <div className={`flex h-screen w-full overflow-hidden font-sans transition-colors duration-200 ${
-      theme === 'dark' ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-800'
-    }`}>
-      
-      {/* PERSISTENT LEFT SIDEBAR */}
-      <nav className={`w-20 flex flex-col items-center py-6 border-r transition-all duration-300 ${
-        theme === 'dark' ? 'border-slate-800 bg-slate-900/90' : 'border-slate-200 bg-white'
-      } z-30`}>
-        {/* Notebook Logo */}
-        <div className="mb-10 flex flex-col items-center">
-          <div className="p-3 rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 flex items-center justify-center">
-            <Sparkles size={22} className="animate-pulse" />
-          </div>
-          <span className="text-[10px] font-bold tracking-wider uppercase mt-2 text-indigo-600 dark:text-indigo-400">LM</span>
-        </div>
-        
-        {/* Tab Items */}
-        <div className="flex-1 flex flex-col gap-5 w-full items-center">
-          <SidebarNavItem 
-            icon={<Play size={20} />} 
-            label="Workspace" 
-            active={activeTab === 'workspace'} 
-            onClick={() => setActiveTab('workspace')} 
-            theme={theme} 
-          />
-          <SidebarNavItem 
-            icon={<Briefcase size={20} />} 
-            label="Archive" 
-            active={activeTab === 'archive'} 
-            onClick={() => {
-              setActiveTab('archive'); 
-              setSelectedArchiveJobId(null);
-            }} 
-            theme={theme} 
-          />
-          <SidebarNavItem 
-            icon={<User size={20} />} 
-            label="Master Data" 
-            active={activeTab === 'profile'} 
-            onClick={() => setActiveTab('profile')} 
-            theme={theme} 
-          />
-        </div>
+      setupDragAndDrop();
+      applyTheme();
+      renderAllViews();
+      lucide.createIcons();
+    });
 
-        {/* Bottom Theme and Chat Toggle buttons */}
-        <div className="flex flex-col gap-4 items-center">
-          <button 
-            onClick={() => setIsChatOpen(!isChatOpen)} 
-            className={`p-3 rounded-xl transition-all relative ${
-              isChatOpen 
-                ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/70 dark:text-indigo-400' 
-                : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`} 
-            title="Toggle Coach AI Assistant"
-          >
-            <MessageSquare size={20} />
-            {currentJobContext && (
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-            )}
-          </button>
-          <button 
-            onClick={toggleTheme} 
-            className={`p-3 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors ${
-              theme === 'dark' ? 'hover:bg-slate-800' : 'hover:bg-slate-100'
-            }`}
-            title="Toggle Theme Mode"
-          >
-            {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
-          </button>
-        </div>
-      </nav>
-
-      {/* MAIN DYNAMIC CONTENT CONTAINER */}
-      <main className="flex-1 overflow-hidden relative flex flex-col">
-        {/* Artistic top color splash */}
-        <div className={`h-40 absolute top-0 left-0 right-0 -z-10 bg-gradient-to-b opacity-40 ${
-          theme === 'dark' ? 'from-indigo-950/20 to-slate-950' : 'from-indigo-50 to-slate-50'
-        }`} />
-        
-        <div className="flex-1 overflow-y-auto p-8 pt-10">
-          <div className="max-w-5xl mx-auto h-full">
-            {activeTab === 'workspace' && (
-              <WorkspaceTab 
-                wsCompany={wsCompany} setWsCompany={setWsCompany}
-                wsTitle={wsTitle} setWsTitle={setWsTitle}
-                wsJd={wsJd} setWsJd={setWsJd}
-                isGenerating={wsIsGenerating}
-                onGenerate={handleGenerateResume}
-                resultJobId={wsResultJobId}
-                jobsHistory={jobsHistory}
-                updateJobInHistory={updateJobInHistory}
-                resetWorkspace={() => {
-                  setWsCompany(''); setWsTitle(''); setWsJd(''); setWsResultJobId(null);
-                }}
-                theme={theme}
-              />
-            )}
-            {activeTab === 'archive' && (
-              <ArchiveTab 
-                jobsHistory={jobsHistory}
-                selectedJobId={selectedArchiveJobId}
-                setSelectedJobId={setSelectedArchiveJobId}
-                updateJobInHistory={updateJobInHistory}
-                theme={theme}
-              />
-            )}
-            {activeTab === 'profile' && (
-              <ProfileTab 
-                profile={userProfile} 
-                setProfile={setUserProfile} 
-                theme={theme} 
-                mockImport={() => setUserProfile(MOCK_IMPORTED_PROFILE)}
-              />
-            )}
-          </div>
-        </div>
-      </main>
-
-      {/* RIGHT CHAT BAR PANEL */}
-      <div className={`transition-all duration-300 ease-in-out border-l flex flex-col ${
-        theme === 'dark' ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200 bg-white/95'
-      } backdrop-blur-xl ${isChatOpen ? 'w-96 translate-x-0' : 'w-0 translate-x-full border-none'}`}>
-        {isChatOpen && (
-          <AIChatPanel 
-            contextJob={currentJobContext} 
-            theme={theme} 
-            profile={userProfile}
-          />
-        )}
-      </div>
-
-    </div>
-  );
-}
-
-// --- HELPER SIDEBAR ITEM COMPONENT ---
-function SidebarNavItem({ icon, label, active, onClick, theme }) {
-  const activeClass = theme === 'dark' 
-    ? 'bg-slate-800 text-indigo-400 border border-slate-700/50' 
-    : 'bg-white text-indigo-600 shadow-md border border-slate-100';
-  const inactiveClass = theme === 'dark'
-    ? 'text-slate-400 hover:bg-slate-800/40 hover:text-slate-200'
-    : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700';
-
-  return (
-    <div className="relative group flex justify-center w-full px-2">
-      <button 
-        onClick={onClick}
-        className={`p-3.5 rounded-2xl transition-all duration-200 flex items-center justify-center w-12 h-12 ${
-          active ? activeClass : inactiveClass
-        }`}
-      >
-        {icon}
-      </button>
-      <span className="absolute left-20 py-1.5 px-3 bg-slate-800 text-white text-xs font-medium rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 whitespace-nowrap z-50 shadow-md">
-        {label}
-      </span>
-    </div>
-  );
-}
-
-// === SUB-COMPONENTS ===
-
-// --- WORKSPACE TAB ---
-function WorkspaceTab({ 
-  wsCompany, setWsCompany, 
-  wsTitle, setWsTitle, 
-  wsJd, setWsJd, 
-  isGenerating, 
-  onGenerate, 
-  resultJobId, 
-  jobsHistory, 
-  updateJobInHistory, 
-  resetWorkspace, 
-  theme 
-}) {
-  
-  const resultJob = resultJobId ? jobsHistory.find(j => j.id === resultJobId) : null;
-  const inputStyle = `w-full p-3.5 rounded-xl border focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all ${
-    theme === 'dark' ? 'bg-slate-900/60 border-slate-800 text-slate-100 placeholder-slate-500' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400'
-  }`;
-
-  const handlePrint = () => {
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Export Tailored Resume</title>
-          <style>
-            body { font-family: Courier, monospace; line-height: 1.5; padding: 40px; color: #1e293b; max-width: 800px; margin: 0 auto; white-space: pre-wrap; }
-            h1 { text-align: center; font-size: 24px; }
-          </style>
-        </head>
-        <body>${resultJob.resume}</body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
-  };
-
-  const handleFileDropMock = () => {
-    setWsJd(`We are seeking an enterprise-focused Senior Front-End Engineer to drive core platform interfaces.
-
-Core Tasks:
-- Scale high-performance systems using React, TypeScript, and modern optimization tactics.
-- Improve system architecture to decrease loading overhead by 25%.
-- Foster collaborative output alongside senior technical leaders.
-
-Ideal Background:
-- 4+ years of development exposure with complex UI codebases.
-- Clear capacity to construct and expand custom application flows.
-- Direct alignment with metric-backed agile environments.`);
-  };
-
-  // If a tailored resume has been successfully generated, display split screen workspace view
-  if (resultJob) {
-    return (
-      <div className="h-[85vh] flex flex-col animate-in fade-in slide-in-from-bottom-6 duration-500">
-        
-        {/* Split view header */}
-        <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-200/50 dark:border-slate-800/50">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold px-2 py-1 bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400 rounded-md">ATS OPTIMIZED</span>
-              <p className="text-sm text-slate-400">Created {resultJob.dateAdded}</p>
-            </div>
-            <h1 className="text-2xl font-semibold tracking-tight mt-1">{resultJob.title} — {resultJob.company}</h1>
-          </div>
-          <div className="flex gap-3">
-            <button 
-              onClick={resetWorkspace} 
-              className={`px-4 py-2.5 rounded-xl text-sm font-medium border transition-colors ${
-                theme === 'dark' ? 'border-slate-800 hover:bg-slate-800' : 'border-slate-200 hover:bg-slate-100 bg-white'
-              }`}
-            >
-              Start New Analysis
-            </button>
-            <button 
-              onClick={handlePrint}
-              className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold transition-all shadow-md shadow-indigo-600/10"
-            >
-              <Printer size={16} /> Print / Export PDF
-            </button>
-          </div>
-        </div>
-
-        {/* Content Columns */}
-        <div className="flex-1 flex gap-6 min-h-0">
-          {/* Left Panel: Analysis Metrics */}
-          <div className="w-80 flex flex-col gap-4 overflow-y-auto pr-1">
-            <div className={`p-5 rounded-2xl border ${
-              theme === 'dark' ? 'bg-slate-900/40 border-slate-800' : 'bg-white border-slate-200/80 shadow-sm'
-            }`}>
-              <h3 className="font-semibold text-lg flex items-center gap-2 mb-2 text-emerald-500">
-                <CheckCircle size={18} /> Match Score: {resultJob.matchScore}%
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Our parsing engine compared your career profile data with this specific job description. We structured this output to directly match essential requirements while omitting overused AI boilerplate text.
-              </p>
-            </div>
-
-            <div className={`p-5 rounded-2xl border ${
-              theme === 'dark' ? 'bg-slate-900/40 border-slate-800' : 'bg-white border-slate-200/80 shadow-sm'
-            }`}>
-              <h4 className="text-xs font-bold mb-3 uppercase tracking-wider text-slate-400 dark:text-slate-500">Extracted Keywords</h4>
-              <div className="flex flex-wrap gap-2">
-                {resultJob.keywords.map((kw, i) => (
-                  <span 
-                    key={i} 
-                    className={`px-3 py-1 text-xs rounded-lg font-medium border ${
-                      theme === 'dark' 
-                        ? 'bg-indigo-950/20 text-indigo-400 border-indigo-900/50' 
-                        : 'bg-indigo-50/70 text-indigo-700 border-indigo-100'
-                    }`}
-                  >
-                    {kw}
-                  </span>
-                ))}
-              </div>
-            </div>
-            
-            <div className={`flex-1 p-5 rounded-2xl border flex flex-col ${
-              theme === 'dark' ? 'bg-slate-900/40 border-slate-800' : 'bg-white border-slate-200/80 shadow-sm'
-            }`}>
-              <h4 className="text-xs font-bold mb-3 uppercase tracking-wider text-slate-400 dark:text-slate-500">Original Job Description</h4>
-              <div className="text-xs text-slate-500 dark:text-slate-400 overflow-y-auto whitespace-pre-wrap leading-relaxed pr-1 flex-1">
-                {resultJob.jd}
-              </div>
-            </div>
-          </div>
-
-          {/* Right Panel: Plain Text High-Fidelity Resume Document */}
-          <div className={`flex-1 rounded-2xl border flex flex-col overflow-hidden ${
-            theme === 'dark' ? 'bg-slate-900/80 border-slate-800' : 'bg-white border-slate-200/80 shadow-md'
-          }`}>
-            <div className={`p-3.5 border-b flex justify-between items-center ${
-              theme === 'dark' ? 'border-slate-800 bg-slate-950/40' : 'border-slate-100 bg-slate-50/50'
-            }`}>
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Plain Text Document</span>
-              </div>
-              <span className="text-[10px] bg-slate-200/60 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 py-0.5 px-2 rounded font-mono">Live Sync (Local)</span>
-            </div>
-            <textarea 
-              value={resultJob.resume}
-              onChange={(e) => updateJobInHistory(resultJob.id, { resume: e.target.value })}
-              className={`flex-1 w-full p-8 resize-none outline-none font-mono text-sm leading-relaxed ${
-                theme === 'dark' ? 'bg-transparent text-slate-300' : 'bg-transparent text-slate-700'
-              }`}
-              spellCheck="false"
-            />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Fallback to configuration input view
-  return (
-    <div className="max-w-3xl mx-auto py-8 animate-in fade-in duration-500">
-      <div className="mb-8 text-center">
-        <h1 className="text-4xl font-semibold tracking-tight mb-2">Workspace & Generator</h1>
-        <p className="text-slate-500 dark:text-slate-400">Assemble realistic tailored resumes structured precisely for enterprise ATS compliance.</p>
-      </div>
-
-      <div className={`p-8 rounded-3xl border shadow-sm ${
-        theme === 'dark' ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200/80'
-      }`}>
-        <div className="grid grid-cols-2 gap-4 mb-6">
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">Company Name</label>
-            <input 
-              type="text" 
-              value={wsCompany} 
-              onChange={e=>setWsCompany(e.target.value)} 
-              className={inputStyle} 
-              placeholder="Acme Systems" 
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">Job Title</label>
-            <input 
-              type="text" 
-              value={wsTitle} 
-              onChange={e=>setWsTitle(e.target.value)} 
-              className={inputStyle} 
-              placeholder="Senior Front-End Engineer" 
-            />
-          </div>
-        </div>
-
-        <div className="mb-6">
-          <div className="flex justify-between items-end mb-2">
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Job Description Requirements</label>
-            <button 
-              onClick={handleFileDropMock} 
-              className="text-xs flex items-center gap-1.5 text-indigo-600 hover:text-indigo-700 font-medium transition-colors"
-            >
-              <Upload size={14} /> Mock Document Parse
-            </button>
-          </div>
-          
-          <div 
-            className={`relative group rounded-2xl border transition-all ${
-              theme === 'dark' ? 'border-slate-800' : 'border-slate-200'
-            }`}
-          >
-            <textarea 
-              value={wsJd} 
-              onChange={e=>setWsJd(e.target.value)} 
-              className={`${inputStyle} h-64 border-none resize-none`} 
-              placeholder="Paste responsibilities and credentials details here, or click above to simulate document intake..."
-            />
-          </div>
-        </div>
-
-        <button 
-          onClick={onGenerate}
-          disabled={isGenerating || !wsCompany.trim() || !wsTitle.trim() || !wsJd.trim()}
-          className={`w-full py-4 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all shadow-md
-            ${isGenerating 
-              ? 'bg-indigo-400 text-white cursor-not-allowed' 
-              : (!wsCompany.trim() || !wsTitle.trim() || !wsJd.trim()) 
-                ? `${theme==='dark' ? 'bg-slate-800 text-slate-500' : 'bg-slate-100 text-slate-400'} cursor-not-allowed`
-                : 'bg-indigo-600 hover:bg-indigo-700 text-white hover:shadow-lg hover:shadow-indigo-600/10 hover:-translate-y-0.5'
-            }`}
-        >
-          {isGenerating ? (
-            <>
-              <Loader2 className="animate-spin" size={18} /> 
-              Executing Multi-Layer Resume Alignment...
-            </>
-          ) : (
-            <>
-              <Sparkles size={18} /> 
-              Analyze & Align Resume
-            </>
-          )}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// --- ARCHIVE TAB ---
-function ArchiveTab({ jobsHistory, selectedJobId, setSelectedJobId, updateJobInHistory, theme }) {
-  
-  // Detail page viewing layout
-  if (selectedJobId) {
-    const job = jobsHistory.find(j => j.id === selectedJobId);
-    if (!job) return null;
-
-    return (
-      <div className="h-[85vh] flex flex-col animate-in fade-in duration-300">
-         <div className="flex items-center gap-4 mb-6 pb-4 border-b border-slate-200/50 dark:border-slate-800/50">
-          <button 
-            onClick={() => setSelectedJobId(null)} 
-            className={`p-2 rounded-xl transition-colors ${
-              theme === 'dark' ? 'hover:bg-slate-800 bg-slate-900' : 'hover:bg-slate-100 bg-white border border-slate-200'
-            }`}
-          >
-            <ChevronLeft size={20} />
-          </button>
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">{job.title}</h1>
-            <p className="text-sm text-slate-500 mt-1">{job.company} • Added {job.dateAdded}</p>
-          </div>
-          <div className="ml-auto flex items-center gap-3">
-             <span className="text-xs text-slate-400">Application State:</span>
-             <select 
-                value={job.status} 
-                onChange={(e) => updateJobInHistory(job.id, { status: e.target.value })}
-                className={`p-2 rounded-xl text-sm border outline-none font-medium transition-all ${
-                  theme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-white border-slate-200 text-slate-700'
-                }`}
-              >
-                <option value="Draft">Draft</option>
-                <option value="Applied">Applied</option>
-                <option value="Interviewing">Interviewing</option>
-                <option value="Rejected">Rejected</option>
-              </select>
-          </div>
-        </div>
-
-        {/* Notebook Content Split Grid */}
-        <div className="flex-1 flex gap-6 min-h-0">
-          
-          {/* Left Panel: Edited Resume Draft */}
-          <div className={`w-1/2 rounded-2xl border flex flex-col overflow-hidden ${
-            theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
-          }`}>
-            <div className={`p-3.5 border-b flex justify-between items-center ${
-              theme === 'dark' ? 'border-slate-800 bg-slate-950/40' : 'border-slate-100 bg-slate-50/50'
-            }`}>
-               <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Saved Document Version</span>
-            </div>
-            <textarea 
-              value={job.resume}
-              onChange={(e) => updateJobInHistory(job.id, { resume: e.target.value })}
-              className={`flex-1 w-full p-6 resize-none outline-none font-mono text-sm leading-relaxed ${
-                theme === 'dark' ? 'bg-transparent text-slate-300' : 'bg-transparent text-slate-700'
-              }`}
-            />
-          </div>
-
-          {/* Right Panel: Original Job Details + Personal Interview Scratchpad */}
-          <div className="w-1/2 flex flex-col gap-5 overflow-y-auto">
-             <div className={`p-5 rounded-2xl border ${
-               theme === 'dark' ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200/80 shadow-sm'
-             }`}>
-               <h4 className="text-xs font-bold mb-3 uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-2">
-                 <FileText size={14}/> Extracted Job Description
-               </h4>
-               <div className="text-xs text-slate-500 dark:text-slate-400 whitespace-pre-wrap max-h-48 overflow-y-auto leading-relaxed pr-1">
-                  {job.jd}
-               </div>
-             </div>
-
-             <div className={`flex-1 p-5 rounded-2xl border flex flex-col ${
-               theme === 'dark' ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200/80 shadow-sm'
-             }`}>
-               <h4 className="text-xs font-bold mb-3 uppercase tracking-wider text-indigo-500 flex items-center gap-2">
-                 <Edit3 size={14}/> Interview Preparation & Draft Cover Letter (Autosaved)
-               </h4>
-               <textarea 
-                  value={job.notes || ''}
-                  onChange={(e) => updateJobInHistory(job.id, { notes: e.target.value })}
-                  placeholder="Draft answers to potential questions, target dates, or custom cover letters specific to this role..."
-                  className={`flex-1 w-full resize-none outline-none text-sm leading-relaxed ${
-                    theme === 'dark' ? 'bg-transparent text-slate-300' : 'bg-transparent text-slate-700'
-                  }`}
-                />
-             </div>
-          </div>
-
-        </div>
-      </div>
-    );
-  }
-
-  // Dashboard List layout
-  return (
-    <div className="py-8 animate-in fade-in duration-300">
-      <div className="mb-8">
-        <h1 className="text-3xl font-semibold tracking-tight">Career Archive</h1>
-        <p className="text-slate-500 mt-2">Manage ongoing and historic interview opportunities and documentation.</p>
-      </div>
-
-      {jobsHistory.length === 0 ? (
-        <div className={`p-16 text-center rounded-3xl border-2 border-dashed ${
-          theme === 'dark' ? 'border-slate-800 bg-slate-900/20' : 'border-slate-200 bg-slate-50/50'
-        }`}>
-          <Briefcase size={40} className="mx-auto mb-4 text-slate-400" />
-          <h3 className="text-lg font-medium">No job records yet</h3>
-          <p className="text-sm text-slate-500 mt-1">Navigate to the Workspace to generate tailored resumes and track your first match.</p>
-        </div>
-      ) : (
-        <div className="grid gap-3">
-          {jobsHistory.map(job => (
-            <div 
-              key={job.id} 
-              onClick={() => setSelectedJobId(job.id)}
-              className={`p-5 rounded-2xl border flex items-center justify-between cursor-pointer group transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
-                theme === 'dark' 
-                  ? 'bg-slate-900/60 border-slate-800 hover:border-slate-700 hover:bg-slate-900' 
-                  : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-indigo-600/5'
-              }`}
-            >
-              <div className="flex-1 min-w-0 pr-4">
-                <span className="text-[10px] text-slate-400 block mb-1 font-mono uppercase tracking-wider">{job.dateAdded}</span>
-                <h3 className="font-semibold text-lg truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                  {job.title}
-                </h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400 truncate">{job.company}</p>
-              </div>
-              
-              <div className="flex items-center gap-12">
-                 <div className="text-right">
-                  <span className="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">Match Score</span>
-                  <span className="font-bold text-emerald-500 text-lg">{job.matchScore}%</span>
-                 </div>
-                 
-                 <div className="text-right w-28">
-                  <span className="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-1">Status</span>
-                  <span className={`inline-block text-xs px-2.5 py-1 rounded-full font-semibold ${
-                    job.status === 'Applied' ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400' :
-                    job.status === 'Interviewing' ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' :
-                    job.status === 'Rejected' ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400' :
-                    'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
-                  }`}>
-                    {job.status}
-                  </span>
-                 </div>
-                 <ChevronRight className="text-slate-400 opacity-0 group-hover:opacity-100 transition-all duration-200 transform group-hover:translate-x-1" size={20} />
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// --- PROFILE TAB ---
-function ProfileTab({ profile, setProfile, theme, mockImport }) {
-  const inputClass = `w-full p-3 rounded-xl border text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all ${
-    theme === 'dark' ? 'bg-slate-900 border-slate-800 text-slate-200 placeholder-slate-600' : 'bg-white border-slate-200 text-slate-800'
-  }`;
-  
-  const handleUpdate = (field, value) => setProfile(prev => ({ ...prev, [field]: value }));
-
-  const addExp = () => {
-    setProfile(p => ({ 
-      ...p, 
-      experience: [
-        { id: "exp-" + Date.now(), company: '', title: '', startDate: '', endDate: '', description: '' }, 
-        ...p.experience
-      ] 
-    }));
-  };
-
-  const updateExp = (id, field, val) => {
-    setProfile(p => ({ ...p, experience: p.experience.map(e => e.id === id ? { ...e, [field]: val } : e) }));
-  };
-
-  const removeExp = (id) => {
-    setProfile(p => ({ ...p, experience: p.experience.filter(e => e.id !== id) }));
-  };
-
-  const addEdu = () => {
-    setProfile(p => ({ 
-      ...p, 
-      education: [
-        { id: "edu-" + Date.now(), school: '', degree: '', year: '' }, 
-        ...p.education
-      ] 
-    }));
-  };
-
-  const updateEdu = (id, field, val) => {
-    setProfile(p => ({ ...p, education: p.education.map(e => e.id === id ? { ...e, [field]: val } : e) }));
-  };
-
-  const removeEdu = (id) => {
-    setProfile(p => ({ ...p, education: p.education.filter(e => e.id !== id) }));
-  };
-
-  return (
-    <div className="max-w-4xl mx-auto py-8 animate-in fade-in duration-300 pb-24">
-      <div className="flex justify-between items-center mb-8 pb-4 border-b border-slate-200/50 dark:border-slate-800/50">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Master Profile Source</h1>
-          <p className="text-slate-500 mt-1 text-sm">Your primary single-source of career truth for targeting outputs.</p>
-        </div>
-        <button 
-          onClick={mockImport} 
-          className="flex items-center gap-2 px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:hover:bg-indigo-950/60 dark:text-indigo-300 rounded-xl text-xs font-semibold transition-all border border-indigo-100 dark:border-indigo-900/30"
-        >
-          <Upload size={14} /> Import Demo Profile
-        </button>
-      </div>
-
-      <div className="space-y-6">
-        
-        {/* Contact info cards */}
-        <section className={`p-6 rounded-2xl border ${
-          theme === 'dark' ? 'bg-slate-900/40 border-slate-800' : 'bg-white border-slate-200/80 shadow-sm'
-        }`}>
-          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-4 flex items-center gap-2">
-            <User size={16}/> Personal Contact Information
-          </h2>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1.5">Full Name</label>
-              <input type="text" placeholder="Alex Rivera" value={profile.fullName} onChange={e=>handleUpdate('fullName', e.target.value)} className={inputClass} />
-            </div>
-            <div>
-              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1.5">Email Address</label>
-              <input type="email" placeholder="alex@domain.com" value={profile.email} onChange={e=>handleUpdate('email', e.target.value)} className={inputClass} />
-            </div>
-            <div>
-              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1.5">Phone Number</label>
-              <input type="text" placeholder="(555) 019-2831" value={profile.phone} onChange={e=>handleUpdate('phone', e.target.value)} className={inputClass} />
-            </div>
-            <div>
-              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1.5">LinkedIn Profile</label>
-              <input type="text" placeholder="linkedin.com/in/username" value={profile.linkedin} onChange={e=>handleUpdate('linkedin', e.target.value)} className={inputClass} />
-            </div>
-            <div className="col-span-2">
-              <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1.5">Portfolio or Blog Website</label>
-              <input type="text" placeholder="https://myportfolio.io" value={profile.portfolio} onChange={e=>handleUpdate('portfolio', e.target.value)} className={inputClass} />
-            </div>
-          </div>
-        </section>
-
-        {/* Master Summary */}
-        <section className={`p-6 rounded-2xl border ${
-          theme === 'dark' ? 'bg-slate-900/40 border-slate-800' : 'bg-white border-slate-200/80 shadow-sm'
-        }`}>
-          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-4">Master Professional Summary</h2>
-          <textarea 
-            placeholder="Introduce your high-level engineering strengths, history, and key metrics..." 
-            value={profile.summary} onChange={e=>handleUpdate('summary', e.target.value)} 
-            className={`${inputClass} h-28 resize-none`} 
-          />
-        </section>
-
-        {/* Master Professional Experience */}
-        <section className={`p-6 rounded-2xl border ${
-          theme === 'dark' ? 'bg-slate-900/40 border-slate-800' : 'bg-white border-slate-200/80 shadow-sm'
-        }`}>
-           <div className="flex justify-between items-center mb-4">
-             <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Professional Experience Log</h2>
-             <button onClick={addExp} className="text-xs flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-semibold transition-colors">
-               <Plus size={14}/> Add New Role
-             </button>
-           </div>
-           
-           <div className="space-y-4">
-             {profile.experience.length === 0 && (
-               <p className="text-sm text-slate-400 italic text-center py-4">No professional experience listed. Click 'Import Demo Profile' to begin.</p>
-             )}
-             {profile.experience.map((exp) => (
-               <div key={exp.id} className={`p-5 rounded-xl border relative group transition-all ${
-                 theme === 'dark' ? 'border-slate-800 bg-slate-950/40' : 'border-slate-200/70 bg-slate-50/30'
-               }`}>
-                  <button 
-                    onClick={()=>removeExp(exp.id)} 
-                    className="absolute top-4 right-4 text-slate-400 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <Trash2 size={16}/>
-                  </button>
-                  <div className="grid grid-cols-2 gap-4 mb-4 pr-8">
-                    <div>
-                      <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Company Name</label>
-                      <input type="text" placeholder="Oracle" value={exp.company} onChange={e=>updateExp(exp.id, 'company', e.target.value)} className={inputClass} />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Title</label>
-                      <input type="text" placeholder="Systems Engineer" value={exp.title} onChange={e=>updateExp(exp.id, 'title', e.target.value)} className={inputClass} />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Start Date</label>
-                      <input type="text" placeholder="YYYY-MM" value={exp.startDate} onChange={e=>updateExp(exp.id, 'startDate', e.target.value)} className={inputClass} />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">End Date (or 'Present')</label>
-                      <input type="text" placeholder="Present" value={exp.endDate} onChange={e=>updateExp(exp.id, 'endDate', e.target.value)} className={inputClass} />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Key Contributions & Metrics</label>
-                    <textarea 
-                      placeholder="Use action verbs and measurable performance details (e.g. Optimized microservice speed by 25%). Avoid empty AI jargon." 
-                      value={exp.description} 
-                      onChange={e=>updateExp(exp.id, 'description', e.target.value)} 
-                      className={`${inputClass} h-24 resize-none`} 
-                    />
-                  </div>
-               </div>
-             ))}
-           </div>
-        </section>
-
-         {/* Master Education Details */}
-         <section className={`p-6 rounded-2xl border ${
-           theme === 'dark' ? 'bg-slate-900/40 border-slate-800' : 'bg-white border-slate-200/80 shadow-sm'
-         }`}>
-           <div className="flex justify-between items-center mb-4">
-             <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Academic Background</h2>
-             <button onClick={addEdu} className="text-xs flex items-center gap-1 text-indigo-500 hover:text-indigo-600 font-semibold transition-colors">
-               <Plus size={14}/> Add New Education
-             </button>
-           </div>
-           
-           <div className="space-y-4">
-             {profile.education.map((edu) => (
-               <div key={edu.id} className="grid grid-cols-4 gap-4 items-end relative group pr-10 pb-4 border-b border-dashed border-slate-200 dark:border-slate-800 last:border-none last:pb-0">
-                  <div className="col-span-2">
-                    <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Degree Title</label>
-                    <input type="text" placeholder="B.S. in Computer Engineering" value={edu.degree} onChange={e=>updateEdu(edu.id, 'degree', e.target.value)} className={inputClass} />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">School / Academy</label>
-                    <input type="text" placeholder="MIT" value={edu.school} onChange={e=>updateEdu(edu.id, 'school', e.target.value)} className={inputClass} />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Graduation Year</label>
-                    <input type="text" placeholder="2018" value={edu.year} onChange={e=>updateEdu(edu.id, 'year', e.target.value)} className={inputClass} />
-                  </div>
-                  <button 
-                    onClick={()=>removeEdu(edu.id)} 
-                    className="absolute right-0 bottom-3 text-slate-400 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <Trash2 size={16}/>
-                  </button>
-               </div>
-             ))}
-           </div>
-        </section>
-
-        {/* Master Skills Tag Deck */}
-        <section className={`p-6 rounded-2xl border ${
-          theme === 'dark' ? 'bg-slate-900/40 border-slate-800' : 'bg-white border-slate-200/80 shadow-sm'
-        }`}>
-          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-4">Core Skills</h2>
-          <textarea 
-            placeholder="Separate skills with commas (e.g., React, TypeScript, GraphQL, Docker, Python)" 
-            value={profile.skills} 
-            onChange={e=>handleUpdate('skills', e.target.value)} 
-            className={`${inputClass} h-20 resize-none`} 
-          />
-        </section>
-
-      </div>
-    </div>
-  );
-}
-
-// === INTEGRATED LLM CHAT COACH ===
-function AIChatPanel({ contextJob, theme, profile }) {
-  const [messages, setMessages] = useState([
-    { role: 'assistant', content: "Hello! I am your AI Career Coach. Tell me about your upcoming applications, or click any prompt chip below." }
-  ]);
-  const [input, setInput] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const scrollContainerRef = useRef(null);
-
-  useEffect(() => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
-    }
-  }, [messages, isTyping]);
-
-  const handleSend = async (textToSend) => {
-    const rawText = textToSend || input;
-    if (!rawText.trim()) return;
-
-    setMessages(prev => [...prev, { role: 'user', content: rawText }]);
-    setInput('');
-    setIsTyping(true);
-
-    await delay(1200); // Realistic LLM simulated response latency
-
-    const parsedQuery = rawText.toLowerCase();
-    let reply = "";
-
-    // Context-dependent logic
-    if (parsedQuery.includes('interview') && contextJob) {
-      reply = `Let's predict major interview questions based on the requirements for the **${contextJob.title}** role at **${contextJob.company}**:\n\n1. **Technical Alignment**: "We noted you used TypeScript at your previous company. Can you talk about a frontend speed problem you overcame?"\n   *Coach tip*: Refer to your Stellar Cloud dashboard migration metrics.\n\n2. **System Quality**: "How do you guarantee clean interfaces and prevent bundle bloat when introducing multiple components?"\n\nHow would you like to structure your practice session for these?`;
-    } 
-    else if (parsedQuery.includes('cover letter') && contextJob) {
-      reply = `Here is a strong, customized cover letter opener formatted without generic fluff:\n\n"Dear hiring committee at **${contextJob.company}**,\n\nI am writing to express my solid interest in the **${contextJob.title}** opening. Having optimized application delivery by up to 35% in prior roles using React and performance profiling, I am equipped to contribute immediate, metric-backed frontend solutions to your core systems."\n\nI have drafted this so you can paste it directly into your Archive scratchpad notes!`;
-    } 
-    else if (parsedQuery.includes('gap')) {
-      reply = `When explaining any gaps, maintain absolute honesty without oversharing:\n\n"During that timeframe, I made a conscious decision to pause corporate work to focus on personal obligations and system training. Having completed specialized curriculum in Next.js and frontend infrastructure, I am fully prepared to deliver results in full-time capacity."\n\nAlways pivot back to how your existing master skills match their immediate job description.`;
-    } 
-    else if (parsedQuery.includes('negotiate') || parsedQuery.includes('salary')) {
-      reply = `Negotiation is about highlighting concrete evidence and market parity. When they discuss figures, state:\n\n"Based on my record of leading dashboard bundle reductions and maintaining TypeScript systems, I'm targeting a total compensation matching the competitive market standard. I am highly excited about the technical execution and happy to finalize a structure that supports that standard."`;
-    } 
-    else if (parsedQuery.includes('master') || parsedQuery.includes('profile')) {
-      reply = `Your Master Profile currently lists: **${profile.fullName || 'No Name Added'}** with skills: ${profile.skills || 'No skills entered yet'}.\n\nThis provides a solid base for targeting job applications. Keep updating your experience log with metric-based outcomes to maximize ATS scores!`;
-    } 
-    else {
-      reply = `I am reviewing your resume details for **${contextJob ? contextJob.title : 'your application'}**. Let's make sure we frame your past performance using factual data without buzzwords like "delve" or "leverage".\n\nWhat other strategic planning can we execute today?`;
+    // Sync updates back to persistence layers
+    function saveState() {
+      localStorage.setItem('state', JSON.stringify(state));
     }
 
-    setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
-    setIsTyping(false);
-  };
-
-  // Generate prompt chips contextually
-  const chips = contextJob ? [
-    "Predict interview questions for this role",
-    "Draft a cover letter for this job",
-    "How should I explain my experience gap?"
-  ] : [
-    "Review my master profile summary",
-    "How do I negotiate modern offers?",
-    "Check resume format guidelines"
-  ];
-
-  return (
-    <div className="flex flex-col h-full">
-      
-      {/* Coach Header */}
-      <div className={`p-4 border-b flex flex-col justify-center ${
-        theme === 'dark' ? 'border-slate-800 bg-slate-900/40' : 'border-slate-200 bg-slate-50/50'
-      }`}>
-         <div className="flex items-center gap-2 mb-1.5">
-            <div className="w-2 h-2 rounded-full bg-indigo-500 animate-ping" />
-            <span className="font-bold text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">Career Coach System</span>
-         </div>
-         {contextJob ? (
-           <span className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 truncate block">
-             Coaching active for {contextJob.title}
-           </span>
-         ) : (
-           <span className="text-xs text-slate-400 truncate block">General workspace advice</span>
-         )}
-      </div>
-
-      {/* Chat logs */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((msg, index) => (
-          <div key={index} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-            <div className={`max-w-[85%] p-3.5 rounded-2xl text-sm whitespace-pre-wrap leading-relaxed shadow-sm
-              ${msg.role === 'user' 
-                ? 'bg-indigo-600 text-white rounded-tr-sm' 
-                : theme === 'dark' 
-                  ? 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700/50' 
-                  : 'bg-white border border-slate-200 text-slate-700 rounded-tl-sm'
-              }`}
-            >
-              {msg.content}
-            </div>
-          </div>
-        ))}
-        
-        {isTyping && (
-           <div className="flex items-start">
-            <div className={`p-3.5 rounded-2xl rounded-tl-sm flex gap-1 items-center ${
-              theme === 'dark' ? 'bg-slate-800' : 'bg-white border border-slate-200 shadow-sm'
-            }`}>
-              <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{animationDelay: '0ms'}} />
-              <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{animationDelay: '150ms'}} />
-              <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{animationDelay: '300ms'}} />
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Suggested Quick chips */}
-      <div className="p-3 border-t border-slate-100 dark:border-slate-800 flex flex-col gap-2 bg-slate-950/5">
-        <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider px-1">Suggested Prompts</span>
-        <div className="flex flex-wrap gap-1.5">
-          {chips.map((chip, idx) => (
-            <button
-              key={idx}
-              onClick={() => handleSend(chip)}
-              className={`text-left text-xs py-1.5 px-2.5 rounded-lg border transition-all ${
-                theme === 'dark' 
-                  ? 'bg-slate-900 border-slate-800 hover:border-indigo-500/50 text-slate-400 hover:text-slate-200' 
-                  : 'bg-white border-slate-200 hover:border-indigo-400 text-slate-600 hover:text-indigo-600 shadow-sm'
-              }`}
-            >
-              {chip}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Input container */}
-      <div className={`p-3 border-t flex gap-2 ${
-        theme === 'dark' ? 'border-slate-800 bg-slate-900/50' : 'border-slate-100 bg-slate-50/50'
-      }`}>
-         <input 
-            type="text"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSend()}
-            placeholder="Ask your Coach a question..."
-            className={`flex-1 p-2.5 rounded-xl border text-sm outline-none transition-all ${
-              theme === 'dark' ? 'bg-slate-950 border-slate-800 text-slate-100 focus:border-indigo-500/60' : 'bg-white border-slate-200 text-slate-800 focus:border-indigo-400'
-            }`}
-         />
-         <button 
-           onClick={() => handleSend()}
-           disabled={!input.trim()}
-           className={`p-2.5 rounded-xl flex items-center justify-center transition-all ${
-             input.trim() 
-               ? 'bg-indigo-600 hover:bg-indigo-700 text-white' 
-               : 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed'
-           }`}
-         >
-           <Send size={16} />
-         </button>
-      </div>
-
-    </div>
-  );
-}
+    // Apply active theme mode
+    function applyTheme() {
+      if (state.theme === 'dark') {
+        document.documentElement.classList.add('dark');
+        document.getElementById('theme-icon').setAttribute('data-lucide', 'sun');
+      } else {
+        document.documentElement.classList.remove('dark');
+        document.getElementById('
