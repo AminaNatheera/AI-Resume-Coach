@@ -7,17 +7,25 @@
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
-            mono: ['JetBrains Mono', 'Fira Code', 'Courier New', 'monospace'],
+    // Safeguard Tailwind configuration against race conditions during load
+    function configureTailwind() {
+      if (typeof tailwind !== 'undefined') {
+        tailwind.config = {
+          darkMode: 'class',
+          theme: {
+            extend: {
+              fontFamily: {
+                sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+                mono: ['JetBrains Mono', 'Fira Code', 'Courier New', 'monospace'],
+              }
+            }
           }
-        }
+        };
+      } else {
+        setTimeout(configureTailwind, 50);
       }
     }
+    configureTailwind();
   </script>
   <!-- Google Fonts for typography -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -42,7 +50,7 @@
       background: #cbd5e1;
       border-radius: 9999px;
     }
-    /* Simple print utility styles */
+    /* Print Utility Styling */
     @media print {
       body * {
         visibility: hidden;
@@ -55,7 +63,13 @@
         left: 0;
         top: 0;
         width: 100%;
+        color: #000;
+        background: #fff;
+        padding: 40px;
         white-space: pre-wrap !important;
+        font-family: Courier, monospace;
+        font-size: 12pt;
+        line-height: 1.5;
       }
     }
   </style>
@@ -70,7 +84,7 @@
       <!-- NotebookLM style Logo badge -->
       <div class="mb-10 flex flex-col items-center">
         <div class="p-3 rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 flex items-center justify-center">
-          <i data-lucide="sparkles" class="w-5.5 h-5.5 animate-pulse"></i>
+          <i data-lucide="sparkles" class="w-5.5 h-5.5"></i>
         </div>
         <span class="text-[10px] font-bold tracking-wider uppercase mt-2 text-indigo-600 dark:text-indigo-400">LM</span>
       </div>
@@ -511,6 +525,15 @@
       "transformative": "productive"
     };
 
+    // Safe Lucide icon initializer wrapper to prevent ReferenceErrors if script loading lags
+    function safeCreateIcons() {
+      if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
+        lucide.createIcons();
+      } else {
+        console.warn('Lucide is not loaded or available yet.');
+      }
+    }
+
     // Initialize application processes
     window.addEventListener('DOMContentLoaded', () => {
       // Restore cached state
@@ -533,7 +556,7 @@
       setupDragAndDrop();
       applyTheme();
       renderAllViews();
-      lucide.createIcons();
+      safeCreateIcons();
     });
 
     // Sync updates back to persistence layers
@@ -545,7 +568,674 @@
     function applyTheme() {
       if (state.theme === 'dark') {
         document.documentElement.classList.add('dark');
-        document.getElementById('theme-icon').setAttribute('data-lucide', 'sun');
+        const themeIcon = document.getElementById('theme-icon');
+        if (themeIcon) {
+          themeIcon.setAttribute('data-lucide', 'sun');
+        }
       } else {
         document.documentElement.classList.remove('dark');
-        document.getElementById('
+        const themeIcon = document.getElementById('theme-icon');
+        if (themeIcon) {
+          themeIcon.setAttribute('data-lucide', 'moon');
+        }
+      }
+      safeCreateIcons();
+    }
+
+    // Toggle light/dark
+    function toggleTheme() {
+      state.theme = state.theme === 'light' ? 'dark' : 'light';
+      saveState();
+      applyTheme();
+    }
+
+    // Toggle right chat assistant panel
+    function toggleChatPanel() {
+      const panel = document.getElementById('chat-panel');
+      const toggleBtn = document.getElementById('chat-toggle-btn');
+      
+      state.isChatOpen = !state.isChatOpen;
+      saveState();
+
+      if (state.isChatOpen) {
+        panel.classList.remove('w-0', 'translate-x-full', 'border-none');
+        panel.classList.add('w-96', 'translate-x-0');
+        toggleBtn.classList.add('bg-indigo-50', 'text-indigo-600', 'dark:bg-indigo-950/70', 'dark:text-indigo-400');
+      } else {
+        panel.classList.add('w-0', 'translate-x-full', 'border-none');
+        panel.classList.remove('w-96', 'translate-x-0');
+        toggleBtn.classList.remove('bg-indigo-50', 'text-indigo-600', 'dark:bg-indigo-950/70', 'dark:text-indigo-400');
+      }
+    }
+
+    // Switch active workspace tabs
+    function switchTab(tabId) {
+      state.activeTab = tabId;
+      saveState();
+
+      // UI navigation buttons update
+      const buttons = {
+        workspace: document.getElementById('tab-workspace-btn'),
+        archive: document.getElementById('tab-archive-btn'),
+        profile: document.getElementById('tab-profile-btn')
+      };
+
+      Object.keys(buttons).forEach(key => {
+        if (key === tabId) {
+          buttons[key].className = "p-3.5 rounded-2xl transition-all duration-200 flex items-center justify-center w-12 h-12 bg-white text-indigo-600 shadow-md border border-slate-100 dark:bg-slate-800 dark:text-indigo-400 dark:border-slate-700/50";
+        } else {
+          buttons[key].className = "p-3.5 rounded-2xl transition-all duration-200 flex items-center justify-center w-12 h-12 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/40";
+        }
+      });
+
+      // View containers update
+      document.getElementById('tab-workspace').classList.add('hidden');
+      document.getElementById('tab-archive').classList.add('hidden');
+      document.getElementById('tab-profile').classList.add('hidden');
+
+      if (tabId === 'workspace') {
+        document.getElementById('tab-workspace').classList.remove('hidden');
+      } else if (tabId === 'archive') {
+        document.getElementById('tab-archive').classList.remove('hidden');
+        closeArchiveDetails(); // default to listing
+        renderArchiveList();
+      } else if (tabId === 'profile') {
+        document.getElementById('tab-profile').classList.remove('hidden');
+        renderProfileFields();
+      }
+
+      updateCoachContext();
+    }
+
+    // --- DRAG & DROP & PARSE IMPLEMENTATION ---
+    function setupDragAndDrop() {
+      const dropzone = document.getElementById('dropzone');
+      const hint = document.getElementById('dropzone-hint');
+      const textInput = document.getElementById('ws-jd-input');
+
+      dropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        hint.classList.remove('opacity-0');
+        hint.classList.add('opacity-100');
+      });
+
+      dropzone.addEventListener('dragleave', () => {
+        hint.classList.remove('opacity-100');
+        hint.classList.add('opacity-0');
+      });
+
+      dropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        hint.classList.remove('opacity-100');
+        hint.classList.add('opacity-0');
+        simulateMockFileDrop();
+      });
+    }
+
+    function simulateMockFileDrop() {
+      const textInput = document.getElementById('ws-jd-input');
+      textInput.value = `We are seeking an enterprise-focused Senior Front-End Engineer to drive core platform interfaces.
+
+Core Tasks:
+- Scale high-performance systems using React, TypeScript, and modern optimization tactics.
+- Improve system architecture to decrease loading overhead by 25%.
+- Foster collaborative output alongside senior technical leaders.
+
+Ideal Background:
+- 4+ years of development exposure with complex UI codebases.
+- Clear capacity to construct and expand custom application flows.
+- Direct alignment with metric-backed agile environments.`;
+    }
+
+    // --- RESUME VERIFIER & ATS ALIGNMENT ---
+    function sanitizeAndVerifyText(text) {
+      let cleaned = text;
+      Object.keys(buzzwordReplacements).forEach(buzzword => {
+        const regex = new RegExp(`\\b${buzzword}\\b`, 'gi');
+        cleaned = cleaned.replace(regex, buzzwordReplacements[buzzword]);
+      });
+      return cleaned;
+    }
+
+    function generateATSResumeContent(profile, jobInfo) {
+      const fullName = profile.fullName || "YOUR FULL NAME";
+      const contacts = [profile.email, profile.phone, profile.linkedin, profile.portfolio].filter(Boolean).join("  |  ");
+      
+      const rawSummary = profile.summary 
+        ? `Applying as ${jobInfo.title} at ${jobInfo.company}. ${profile.summary}`
+        : `Applying as ${jobInfo.title} at ${jobInfo.company}. Dedicated professional focusing on high-impact software execution, architectural scale, and clean programmatic solutions.`;
+      const finalSummary = sanitizeAndVerifyText(rawSummary);
+
+      let expSection = "";
+      if (profile.experience && profile.experience.length > 0) {
+        expSection = profile.experience.map(exp => {
+          const descLines = exp.description.split('\n').map(line => {
+            const cleanedLine = sanitizeAndVerifyText(line.trim().replace(/^-\s*/, ''));
+            return cleanedLine ? `* ${cleanedLine}` : '';
+          }).filter(Boolean).join('\n');
+          return `${exp.title.toUpperCase()}\n${exp.company}  [${exp.startDate} to ${exp.endDate}]\n${descLines}`;
+        }).join('\n\n');
+      } else {
+        expSection = "* SENIOR SOFTWARE DEVELOPER\n  Target Enterprise Systems\n  * Built robust React workflows raising loading optimization indices by 35%.\n  * Mentored engineering partners to drive product goals and system standards.";
+      }
+
+      let eduSection = "";
+      if (profile.education && profile.education.length > 0) {
+        eduSection = profile.education.map(edu => `${edu.degree}\n${edu.school} — Class of ${edu.year}`).join('\n\n');
+      } else {
+        eduSection = "B.S. in Computer Science\nPacific Academy (Class of 2020)";
+      }
+
+      const skills = profile.skills || "React, TypeScript, Next.js, Performance Optimization";
+
+      return `${fullName.toUpperCase()}
+${contacts}
+
+========================================================================
+PROFESSIONAL SUMMARY
+========================================================================
+${finalSummary}
+
+========================================================================
+PROFESSIONAL EXPERIENCE
+========================================================================
+${expSection}
+
+========================================================================
+EDUCATION
+========================================================================
+${eduSection}
+
+========================================================================
+CORE COMPETENCIES & SKILLS
+========================================================================
+${skills}`.trim();
+    }
+
+    // Process generator execution
+    async function generateTailoredResume() {
+      const company = document.getElementById('ws-company-input').value.trim();
+      const title = document.getElementById('ws-title-input').value.trim();
+      const jd = document.getElementById('ws-jd-input').value.trim();
+
+      if (!company || !title || !jd) {
+        alert("Please complete all inputs to generate a tailored resume alignment.");
+        return;
+      }
+
+      // Hide form, show custom loader animation
+      document.getElementById('workspace-form-view').classList.add('hidden');
+      document.getElementById('workspace-loading-view').classList.remove('hidden');
+
+      // Async latency delay
+      await new Promise(r => setTimeout(r, 1600));
+
+      const tailoredResume = generateATSResumeContent(state.userProfile, { title, company });
+      
+      // Keyword Extractor
+      const availableKeywords = ['react', 'typescript', 'next.js', 'performance', 'accessibility', 'optimization', 'architecture', 'graphql', 'databases', 'system design', 'agile'];
+      const matchedKeywords = availableKeywords.filter(term => jd.toLowerCase().includes(term));
+      const finalKeywords = matchedKeywords.length > 0 ? matchedKeywords : ['frontend execution', 'system scaling', 'technical design'];
+
+      const score = Math.floor(Math.random() * 21) + 79; // Match Index (79-99)
+
+      const newJob = {
+        id: "job-" + Date.now(),
+        dateAdded: new Date().toISOString().split('T')[0],
+        company,
+        title,
+        jd,
+        resume: tailoredResume,
+        keywords: finalKeywords,
+        matchScore: score,
+        status: 'Draft',
+        notes: ''
+      };
+
+      state.jobsHistory.unshift(newJob);
+      state.activeWorkspaceJobId = newJob.id;
+      saveState();
+
+      // Update Split Screen View elements
+      document.getElementById('res-date').innerText = `Created ${newJob.dateAdded}`;
+      document.getElementById('res-title-header').innerText = `${newJob.title} — ${newJob.company}`;
+      document.getElementById('res-score').innerText = `${newJob.matchScore}%`;
+      document.getElementById('res-original-jd').innerText = newJob.jd;
+      document.getElementById('res-resume-textarea').value = newJob.resume;
+
+      const keywordsContainer = document.getElementById('res-keywords');
+      keywordsContainer.innerHTML = '';
+      finalKeywords.forEach(kw => {
+        const badge = document.createElement('span');
+        badge.className = "px-3 py-1 text-xs rounded-lg font-medium border bg-indigo-50/70 text-indigo-700 border-indigo-100 dark:bg-indigo-950/20 dark:text-indigo-400 dark:border-indigo-900/50";
+        badge.innerText = kw;
+        keywordsContainer.appendChild(badge);
+      });
+
+      // Switch view states
+      document.getElementById('workspace-loading-view').classList.add('hidden');
+      document.getElementById('workspace-result-view').classList.remove('hidden');
+      
+      updateCoachContext();
+    }
+
+    function saveActiveResumeEdit(value) {
+      if (!state.activeWorkspaceJobId) return;
+      const job = state.jobsHistory.find(j => j.id === state.activeWorkspaceJobId);
+      if (job) {
+        job.resume = value;
+        saveState();
+      }
+    }
+
+    function resetWorkspace() {
+      // Clear inputs
+      document.getElementById('ws-company-input').value = '';
+      document.getElementById('ws-title-input').value = '';
+      document.getElementById('ws-jd-input').value = '';
+      state.activeWorkspaceJobId = null;
+      saveState();
+
+      // Show form again
+      document.getElementById('workspace-result-view').classList.add('hidden');
+      document.getElementById('workspace-form-view').classList.remove('hidden');
+      updateCoachContext();
+    }
+
+    // --- ARCHIVE LOGIC TAB ---
+    function renderArchiveList() {
+      const container = document.getElementById('archive-list');
+      const emptyState = document.getElementById('archive-empty');
+      container.innerHTML = '';
+
+      if (state.jobsHistory.length === 0) {
+        emptyState.classList.remove('hidden');
+        container.classList.add('hidden');
+        return;
+      }
+
+      emptyState.classList.add('hidden');
+      container.classList.remove('hidden');
+
+      state.jobsHistory.forEach(job => {
+        const row = document.createElement('div');
+        row.onclick = () => openArchiveDetails(job.id);
+        row.className = "p-5 rounded-2xl border border-slate-200 bg-white hover:border-slate-300 dark:bg-slate-900/60 dark:border-slate-800 dark:hover:border-slate-700 hover:-translate-y-0.5 transition-all duration-200 cursor-pointer flex items-center justify-between group";
+        
+        row.innerHTML = `
+          <div class="flex-1 min-w-0 pr-4">
+            <span class="text-[10px] text-slate-400 block mb-1 font-mono uppercase tracking-wider">${job.dateAdded}</span>
+            <h3 class="font-semibold text-lg truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">${job.title}</h3>
+            <p class="text-sm text-slate-500 dark:text-slate-400 truncate">${job.company}</p>
+          </div>
+          <div class="flex items-center gap-12">
+            <div class="text-right">
+              <span class="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-0.5">Match Score</span>
+              <span class="font-bold text-emerald-500 text-lg">${job.matchScore}%</span>
+            </div>
+            <div class="text-right w-28">
+              <span class="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-1">Status</span>
+              <span class="inline-block text-xs px-2.5 py-1 rounded-full font-semibold ${getStatusClass(job.status)}">${job.status}</span>
+            </div>
+            <i data-lucide="chevron-right" class="text-slate-400 opacity-0 group-hover:opacity-100 transition-all duration-200 transform group-hover:translate-x-1"></i>
+          </div>
+        `;
+        container.appendChild(row);
+      });
+      safeCreateIcons();
+    }
+
+    function getStatusClass(status) {
+      if (status === 'Applied') return 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400';
+      if (status === 'Interviewing') return 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400';
+      if (status === 'Rejected') return 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400';
+      return 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400';
+    }
+
+    function openArchiveDetails(id) {
+      state.selectedArchiveJobId = id;
+      saveState();
+
+      const job = state.jobsHistory.find(j => j.id === id);
+      if (!job) return;
+
+      document.getElementById('archive-list-container').classList.add('hidden');
+      document.getElementById('archive-details-container').classList.remove('hidden');
+
+      document.getElementById('det-title').innerText = job.title;
+      document.getElementById('det-company').innerText = `${job.company} • Added ${job.dateAdded}`;
+      document.getElementById('det-status-select').value = job.status;
+      document.getElementById('det-resume-textarea').value = job.resume;
+      document.getElementById('det-jd').innerText = job.jd;
+      document.getElementById('det-notes').value = job.notes || '';
+
+      updateCoachContext();
+    }
+
+    function closeArchiveDetails() {
+      state.selectedArchiveJobId = null;
+      saveState();
+      document.getElementById('archive-details-container').classList.add('hidden');
+      document.getElementById('archive-list-container').classList.remove('hidden');
+      renderArchiveList();
+      updateCoachContext();
+    }
+
+    function updateArchiveJobStatus(status) {
+      if (!state.selectedArchiveJobId) return;
+      const job = state.jobsHistory.find(j => j.id === state.selectedArchiveJobId);
+      if (job) {
+        job.status = status;
+        saveState();
+      }
+    }
+
+    function saveArchiveResumeEdit(val) {
+      if (!state.selectedArchiveJobId) return;
+      const job = state.jobsHistory.find(j => j.id === state.selectedArchiveJobId);
+      if (job) {
+        job.resume = val;
+        saveState();
+      }
+    }
+
+    function saveArchiveNotesEdit(val) {
+      if (!state.selectedArchiveJobId) return;
+      const job = state.jobsHistory.find(j => j.id === state.selectedArchiveJobId);
+      if (job) {
+        job.notes = val;
+        saveState();
+      }
+    }
+
+
+    // --- TAB 3: MASTER PROFILE SOURCE LOGIC ---
+    function renderProfileFields() {
+      const prof = state.userProfile;
+      document.getElementById('prof-name').value = prof.fullName || '';
+      document.getElementById('prof-email').value = prof.email || '';
+      document.getElementById('prof-phone').value = prof.phone || '';
+      document.getElementById('prof-linkedin').value = prof.linkedin || '';
+      document.getElementById('prof-portfolio').value = prof.portfolio || '';
+      document.getElementById('prof-summary').value = prof.summary || '';
+      document.getElementById('prof-skills').value = prof.skills || '';
+
+      renderExperienceNodes();
+      renderEducationNodes();
+    }
+
+    function updateProfileField(field, val) {
+      state.userProfile[field] = val;
+      saveState();
+    }
+
+    function importMockProfile() {
+      state.userProfile = JSON.parse(JSON.stringify(MOCK_IMPORTED_PROFILE));
+      saveState();
+      renderProfileFields();
+    }
+
+    // Dynamic Experience Node renderers
+    function renderExperienceNodes() {
+      const container = document.getElementById('prof-experience-list');
+      container.innerHTML = '';
+
+      state.userProfile.experience.forEach(exp => {
+        const item = document.createElement('div');
+        item.className = "p-5 rounded-xl border border-slate-200/70 bg-slate-50/30 dark:border-slate-800 dark:bg-slate-950/40 relative group transition-all";
+        item.innerHTML = `
+          <button onclick="deleteExperienceNode('${exp.id}')" class="absolute top-4 right-4 text-slate-400 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity">
+            <i data-lucide="trash-2" class="w-4 h-4"></i>
+          </button>
+          <div class="grid grid-cols-2 gap-4 mb-4 pr-8">
+            <div>
+              <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Company Name</label>
+              <input type="text" value="${exp.company}" oninput="updateExperienceNode('${exp.id}', 'company', this.value)" class="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-transparent text-sm outline-none">
+            </div>
+            <div>
+              <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Title</label>
+              <input type="text" value="${exp.title}" oninput="updateExperienceNode('${exp.id}', 'title', this.value)" class="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-transparent text-sm outline-none">
+            </div>
+            <div>
+              <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Start Date</label>
+              <input type="text" value="${exp.startDate}" oninput="updateExperienceNode('${exp.id}', 'startDate', this.value)" class="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-transparent text-sm outline-none" placeholder="YYYY-MM">
+            </div>
+            <div>
+              <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1">End Date</label>
+              <input type="text" value="${exp.endDate}" oninput="updateExperienceNode('${exp.id}', 'endDate', this.value)" class="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-transparent text-sm outline-none" placeholder="YYYY-MM or Present">
+            </div>
+          </div>
+          <div>
+            <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Key Contributions & Metrics</label>
+            <textarea oninput="updateExperienceNode('${exp.id}', 'description', this.value)" class="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-transparent text-sm h-24 resize-none outline-none">${exp.description}</textarea>
+          </div>
+        `;
+        container.appendChild(item);
+      });
+      safeCreateIcons();
+    }
+
+    function addNewExperienceNode() {
+      const newNode = {
+        id: "exp-" + Date.now(), company: '', title: '', startDate: '', endDate: '', description: ''
+      };
+      state.userProfile.experience.unshift(newNode);
+      saveState();
+      renderExperienceNodes();
+    }
+
+    function updateExperienceNode(id, field, value) {
+      const exp = state.userProfile.experience.find(e => e.id === id);
+      if (exp) {
+        exp[field] = value;
+        saveState();
+      }
+    }
+
+    function deleteExperienceNode(id) {
+      state.userProfile.experience = state.userProfile.experience.filter(e => e.id !== id);
+      saveState();
+      renderExperienceNodes();
+    }
+
+    // Dynamic Academic Node renderers
+    function renderEducationNodes() {
+      const container = document.getElementById('prof-education-list');
+      container.innerHTML = '';
+
+      state.userProfile.education.forEach(edu => {
+        const item = document.createElement('div');
+        item.className = "grid grid-cols-4 gap-4 items-end relative group pr-10 pb-4 border-b border-dashed border-slate-200 dark:border-slate-800 last:border-none last:pb-0";
+        item.innerHTML = `
+          <div class="col-span-2">
+            <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Degree Title</label>
+            <input type="text" value="${edu.degree}" oninput="updateEducationNode('${edu.id}', 'degree', this.value)" class="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-transparent text-sm outline-none">
+          </div>
+          <div>
+            <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1">School / Academy</label>
+            <input type="text" value="${edu.school}" oninput="updateEducationNode('${edu.id}', 'school', this.value)" class="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-transparent text-sm outline-none">
+          </div>
+          <div>
+            <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Graduation Year</label>
+            <input type="text" value="${edu.year}" oninput="updateEducationNode('${edu.id}', 'year', this.value)" class="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-transparent text-sm outline-none">
+          </div>
+          <button onclick="deleteEducationNode('${edu.id}')" class="absolute right-0 bottom-3 text-slate-400 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity">
+            <i data-lucide="trash-2" class="w-4 h-4"></i>
+          </button>
+        `;
+        container.appendChild(item);
+      });
+      safeCreateIcons();
+    }
+
+    function addNewEducationNode() {
+      const newNode = {
+        id: "edu-" + Date.now(), school: '', degree: '', year: ''
+      };
+      state.userProfile.education.unshift(newNode);
+      saveState();
+      renderEducationNodes();
+    }
+
+    function updateEducationNode(id, field, value) {
+      const edu = state.userProfile.education.find(e => e.id === id);
+      if (edu) {
+        edu[field] = value;
+        saveState();
+      }
+    }
+
+    function deleteEducationNode(id) {
+      state.userProfile.education = state.userProfile.education.filter(e => e.id !== id);
+      saveState();
+      renderEducationNodes();
+    }
+
+
+    // --- PERSISTENT CONTEXT-AWARE COACH CHAT ---
+    function getActiveJobContext() {
+      if (state.activeTab === 'workspace' && state.activeWorkspaceJobId) {
+        return state.jobsHistory.find(j => j.id === state.activeWorkspaceJobId);
+      }
+      if (state.activeTab === 'archive' && state.selectedArchiveJobId) {
+        return state.jobsHistory.find(j => j.id === state.selectedArchiveJobId);
+      }
+      return null;
+    }
+
+    function updateCoachContext() {
+      const job = getActiveJobContext();
+      const badge = document.getElementById('chat-badge');
+      const headerSub = document.getElementById('chat-context-sub');
+      const chipsContainer = document.getElementById('chat-chips-container');
+
+      if (job) {
+        if (badge) badge.classList.remove('hidden');
+        if (headerSub) headerSub.innerText = `Coaching active for ${job.title} at ${job.company}`;
+        
+        // Context-aware prompt chips
+        if (chipsContainer) {
+          chipsContainer.innerHTML = `
+            <button onclick="handleChipClick('Predict interview questions for this role')" class="text-left text-[11px] py-1.5 px-2.5 rounded-lg border bg-white border-slate-200 hover:border-indigo-400 text-slate-600 hover:text-indigo-600 dark:bg-slate-900 dark:border-slate-800 dark:hover:border-indigo-500/50 dark:text-slate-400 dark:hover:text-slate-200 shadow-sm transition-all">Predict interview questions</button>
+            <button onclick="handleChipClick('Draft a cover letter for this job')" class="text-left text-[11px] py-1.5 px-2.5 rounded-lg border bg-white border-slate-200 hover:border-indigo-400 text-slate-600 hover:text-indigo-600 dark:bg-slate-900 dark:border-slate-800 dark:hover:border-indigo-500/50 dark:text-slate-400 dark:hover:text-slate-200 shadow-sm transition-all">Draft cover letter</button>
+            <button onclick="handleChipClick('How should I explain my experience gap for this JD?')" class="text-left text-[11px] py-1.5 px-2.5 rounded-lg border bg-white border-slate-200 hover:border-indigo-400 text-slate-600 hover:text-indigo-600 dark:bg-slate-900 dark:border-slate-800 dark:hover:border-indigo-500/50 dark:text-slate-400 dark:hover:text-slate-200 shadow-sm transition-all">Explain experience gaps</button>
+          `;
+        }
+      } else {
+        if (badge) badge.classList.add('hidden');
+        if (headerSub) headerSub.innerText = "General workspace advice";
+        
+        // General chips
+        if (chipsContainer) {
+          chipsContainer.innerHTML = `
+            <button onclick="handleChipClick('Review my master profile details')" class="text-left text-[11px] py-1.5 px-2.5 rounded-lg border bg-white border-slate-200 hover:border-indigo-400 text-slate-600 hover:text-indigo-600 dark:bg-slate-900 dark:border-slate-800 dark:hover:border-indigo-500/50 dark:text-slate-400 dark:hover:text-slate-200 shadow-sm transition-all">Review master profile</button>
+            <button onclick="handleChipClick('How should I structure my salary negotiation?')" class="text-left text-[11px] py-1.5 px-2.5 rounded-lg border bg-white border-slate-200 hover:border-indigo-400 text-slate-600 hover:text-indigo-600 dark:bg-slate-900 dark:border-slate-800 dark:hover:border-indigo-500/50 dark:text-slate-400 dark:hover:text-slate-200 shadow-sm transition-all">Structure salary negotiation</button>
+          `;
+        }
+      }
+    }
+
+    function handleChipClick(promptText) {
+      document.getElementById('chat-text-input').value = promptText;
+      sendChatMessage();
+    }
+
+    function handleChatEnter(e) {
+      if (e.key === 'Enter') {
+        sendChatMessage();
+      }
+    }
+
+    async function sendChatMessage() {
+      const input = document.getElementById('chat-text-input');
+      const text = input.value.trim();
+      if (!text) return;
+
+      input.value = '';
+      appendChatMessage('user', text);
+
+      // Add writing simulation loader
+      const frame = document.getElementById('chat-message-frame');
+      const loader = document.createElement('div');
+      loader.id = "chat-typing-indicator";
+      loader.className = "flex items-start";
+      loader.innerHTML = `
+        <div class="p-3.5 rounded-2xl rounded-tl-sm flex gap-1 items-center bg-white border border-slate-200 dark:bg-slate-800 dark:border-slate-700/50 shadow-sm">
+          <div class="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style="animation-delay: 0ms"></div>
+          <div class="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
+          <div class="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
+        </div>
+      `;
+      frame.appendChild(loader);
+      frame.scrollTop = frame.scrollHeight;
+
+      // Simulated engine response stream delay
+      await new Promise(r => setTimeout(r, 1200));
+      loader.remove();
+
+      const job = getActiveJobContext();
+      const parsedQuery = text.toLowerCase();
+      let response = "";
+
+      if (parsedQuery.includes('interview') && job) {
+        response = `Let's practice your strategy for **${job.title}** at **${job.company}**:\n\n1. **High Performance**: "We see you reduced dashboard bundle sizes by 35% at Stellar Cloud Systems. Walk me through the profiling tools you chose?"\n   *Advice*: Start with factual metrics. Say: 'Built reusable library elements and profiled trash collection.'\n\n2. **System Quality**: "How do you coordinate API integrations with backend specialists?"\n\nWhat scenario would you like to run through first?`;
+      } 
+      else if (parsedQuery.includes('cover letter') && job) {
+        response = `Here is a clean, direct, human-sounding cover letter opener structured for **${job.company}**:\n\n"Dear hiring committee at **${job.company}**,\n\nI am writing to outline my fit for the **${job.title}** role. Through executing enterprise React systems and slashing load overhead by up to 35%, I am optimized to bring immediately measurable frontend scale to your platform."\n\n*Coach tip*: Copy this and save it directly in your Archive personal Scratchpad!`;
+      } 
+      else if (parsedQuery.includes('gap')) {
+        response = `When explaining resume gaps, frame it cleanly with absolute honesty:\n\n"During that timeframe, I made a conscious decision to pause corporate work to focus on personal obligations and system training. Having completed specialized curriculum in Next.js and frontend infrastructure, I am fully prepared to deliver results in full-time capacity."\n\nAlways pivot back to how your existing master skills match their immediate job description.`;
+      } 
+      else if (parsedQuery.includes('negotiate') || parsedQuery.includes('salary')) {
+        response = `Negotiation is about highlighting concrete evidence and market parity. When they discuss figures, state:\n\n"Based on my record of leading dashboard bundle reductions and maintaining TypeScript systems, I'm targeting a total compensation matching the competitive market standard. I am highly excited about the technical execution and happy to finalize a structure that supports that standard."`;
+      } 
+      else if (parsedQuery.includes('master') || parsedQuery.includes('profile')) {
+        response = `Your Master Profile currently lists: **${state.userProfile.fullName || 'No Name Added'}** with skills: ${state.userProfile.skills || 'No skills entered yet'}.\n\nThis provides a solid base for targeting job applications. Keep updating your experience log with metric-based outcomes to maximize ATS scores!`;
+      } 
+      else {
+        response = `I am reviewing your resume details for **${job ? job.title : 'your application'}**. Let's make sure we frame your past performance using factual data without buzzwords like "delve" or "leverage".\n\nWhat other strategic planning can we execute today?`;
+      }
+
+      appendChatMessage('assistant', response);
+    }
+
+    function appendChatMessage(role, content) {
+      const frame = document.getElementById('chat-message-frame');
+      const item = document.createElement('div');
+      item.className = `flex flex-col ${role === 'user' ? 'items-end' : 'items-start'}`;
+
+      const itemBubble = document.createElement('div');
+      itemBubble.className = `max-w-[85%] p-3.5 rounded-2xl text-sm whitespace-pre-wrap leading-relaxed shadow-sm ${
+        role === 'user' 
+          ? 'bg-indigo-600 text-white rounded-tr-sm' 
+          : 'bg-white border border-slate-200 text-slate-700 dark:bg-slate-800 dark:border-slate-700/50 dark:text-slate-200 rounded-tl-sm'
+      }`;
+      itemBubble.innerText = content;
+
+      item.appendChild(itemBubble);
+      frame.appendChild(item);
+      frame.scrollTop = frame.scrollHeight;
+    }
+
+
+    // --- PRINT EXPORT PROCESS ---
+    function exportToPrint() {
+      const activeJob = getActiveJobContext();
+      if (!activeJob) return;
+
+      const printArea = document.getElementById('print-area');
+      printArea.innerText = activeJob.resume;
+      window.print();
+    }
+
+
+    // --- RENDER DYNAMIC SYSTEM VIEWS ---
+    function renderAllViews() {
+      // Setup current values
+      renderProfileFields();
+      renderArchiveList();
+      updateCoachContext();
+    }
+  </script>
+</body>
+</html>
